@@ -908,7 +908,7 @@ class TestContractor(common.TestCase, common.AgencyTestHelper):
         d.addCallback(self.stub_method, 'granted', custom_handler)
         d.addCallback(self.recv_grant)
 
-        d.addCallback(self.assertState, contracts.ContractState.wtf)
+        d.addCallback(self.assertState, contracts.ContractState.granted)
 
         return d
 

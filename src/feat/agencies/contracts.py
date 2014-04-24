@@ -166,7 +166,9 @@ class AgencyManager(common.AgencyMiddleBase):
         self.set_timeout(timeout, ContractState.wtf,
                          self.finalize, failure.Failure(error))
 
-        self.call_agent_side(self.manager.initiate, *self.args, **self.kwargs)
+        self.call_agent_side(self.manager.initiate, *self.args,
+                             ensure_state=ContractState.initiated,
+                             **self.kwargs)
 
         return self.manager
 
@@ -174,6 +176,9 @@ class AgencyManager(common.AgencyMiddleBase):
 
     @replay.named_side_effect('AgencyManager.announce')
     def announce(self, announce):
+        if not self._ensure_state(ContractState.initiated):
+            return
+
         announce = announce.duplicate()
         self.debug("Sending announcement %r", announce)
         assert isinstance(announce, message.Announcement)
@@ -181,7 +186,6 @@ class AgencyManager(common.AgencyMiddleBase):
         if announce.traversal_id is None:
             announce.traversal_id = str(uuid.uuid1())
 
-        self._ensure_state(ContractState.initiated)
         self._set_state(ContractState.announced)
 
         exp_time = time.future(self.manager.announce_timeout)
@@ -193,9 +197,10 @@ class AgencyManager(common.AgencyMiddleBase):
 
     @replay.named_side_effect('AgencyManager.reject')
     def reject(self, bid, rejection=None):
-        self._ensure_state([ContractState.announced,
-                            ContractState.granted,
-                            ContractState.closed])
+        if not self._ensure_state([ContractState.announced,
+                                   ContractState.granted,
+                                   ContractState.closed]):
+            return
 
         contractor = self.contractors.by_message(bid)
         if not rejection:
@@ -207,8 +212,9 @@ class AgencyManager(common.AgencyMiddleBase):
     @serialization.freeze_tag('AgencyManager.grant')
     @replay.named_side_effect('AgencyManager.grant')
     def grant(self, grants):
-        self._ensure_state([ContractState.closed,
-                            ContractState.announced])
+        if not self._ensure_state([ContractState.closed,
+                                   ContractState.announced]):
+            return
 
         if not isinstance(grants, list):
             grants = [grants]
@@ -243,8 +249,9 @@ class AgencyManager(common.AgencyMiddleBase):
 
     @replay.named_side_effect('AgencyManager.cancel')
     def cancel(self, reason=None):
-        self._ensure_state([ContractState.granted,
-                            ContractState.cancelled])
+        if not self._ensure_state([ContractState.granted,
+                                   ContractState.cancelled]):
+            return
         self._set_state(ContractState.cancelled)
 
         to_cancel = self.contractors.with_state(\
@@ -253,7 +260,8 @@ class AgencyManager(common.AgencyMiddleBase):
             cancellation = message.Cancellation(reason=reason)
             contractor.on_event(cancellation)
 
-        self._run_and_terminate(self.manager.cancelled, cancellation)
+        self._run_and_terminate(self.manager.cancelled, cancellation,
+                                ensure_state=ContractState.cancelled)
 
     @replay.named_side_effect('AgencyManager.terminate')
     def terminate(self, result=None):
@@ -320,11 +328,13 @@ class AgencyManager(common.AgencyMiddleBase):
 
     def _on_grant_expire(self):
         self._set_state(ContractState.aborted)
-        return self._run_and_terminate(self.manager.aborted)
+        return self._run_and_terminate(self.manager.aborted,
+                                       ensure_state=ContractState.aborted)
 
     def _on_announce_expire(self):
         self.log('Timeout expired, closing the announce window')
-        self._ensure_state(ContractState.announced)
+        if not self._ensure_state(ContractState.announced):
+            return
         self._goto_closed_or_expired()
 
     def _on_bid(self, bid):
@@ -380,7 +390,8 @@ class AgencyManager(common.AgencyMiddleBase):
 
     def _on_complete(self):
         self.log('All Reports received. Sending ACKs')
-        self._ensure_state(ContractState.granted)
+        if not self._ensure_state(ContractState.granted):
+            return
         self._set_state(ContractState.completed)
         self.cancel_timeout()
 
@@ -410,14 +421,16 @@ class AgencyManager(common.AgencyMiddleBase):
             self._close_announce_period()
         else:
             self._set_state(ContractState.expired)
-            self._run_and_terminate(self.manager.expired)
+            self._run_and_terminate(self.manager.expired,
+                                    ensure_state=ContractState.expired)
 
     def _close_announce_period(self):
         expiration_time = self.contractors.get_expiration_time()
         self.set_timeout(expiration_time, ContractState.expired,
                          self._run_and_terminate, self.manager.expired)
         self._set_state(ContractState.closed)
-        self.call_agent_side(self.manager.closed)
+        self.call_agent_side(self.manager.closed,
+                             ensure_state=ContractState.closed)
 
     def _count_expected_bids(self, recipients):
         '''
@@ -461,7 +474,9 @@ class AgencyContractor(common.AgencyMiddleBase):
         self._set_state(ContractState.initiated)
 
         self.call_agent_side(self.contractor.initiate,
-                             *self.args, **self.kwargs)
+                             *self.args,
+                             ensure_state=ContractState.initiated,
+                             **self.kwargs)
         return contractor
 
     ### IAgencyContractor Methods ###
@@ -469,10 +484,11 @@ class AgencyContractor(common.AgencyMiddleBase):
     @serialization.freeze_tag('AgencyContractor.bid')
     @replay.named_side_effect('AgencyContractor.bid')
     def bid(self, bid):
+        if not self._ensure_state(ContractState.announced):
+            return
+
         bid = bid.duplicate()
         self.debug("Sending bid %r", bid)
-
-        self._ensure_state(ContractState.announced)
         self._set_state(ContractState.bid)
 
         expiration_time = time.future(self.contractor.bid_timeout)
@@ -486,11 +502,12 @@ class AgencyContractor(common.AgencyMiddleBase):
     @serialization.freeze_tag('AgencyContractor.handover')
     @replay.named_side_effect('AgencyContractor.handover')
     def handover(self, bid):
+        if not self._ensure_state(ContractState.announced):
+            return
+
         new_bid = bid.duplicate()
         new_bid.reply_to = bid.reply_to
         self.debug('Sending bid of the nested contractor: %r.', new_bid)
-
-        self._ensure_state(ContractState.announced)
         self._set_state(ContractState.delegated)
 
         self.bid = self.handover_message(new_bid)
@@ -499,10 +516,12 @@ class AgencyContractor(common.AgencyMiddleBase):
 
     @replay.named_side_effect('AgencyContractor.refuse')
     def refuse(self, refusal):
+        if not self._ensure_state(ContractState.announced):
+            return
+
         refusal = refusal.duplicate()
         self.debug("Sending refusal %r", refusal)
 
-        self._ensure_state(ContractState.announced)
         self._set_state(ContractState.refused)
 
         refusal = self.send_message(refusal)
@@ -511,10 +530,12 @@ class AgencyContractor(common.AgencyMiddleBase):
 
     @replay.named_side_effect('AgencyContractor.defect')
     def defect(self, cancellation):
+        if not self._ensure_state(ContractState.granted):
+            return
+
         cancellation = cancellation.duplicate()
         self.debug("Sending cancelation %r", cancellation)
 
-        self._ensure_state(ContractState.granted)
         self._set_state(ContractState.defected)
 
         cancellation = self.send_message(cancellation)
@@ -523,10 +544,12 @@ class AgencyContractor(common.AgencyMiddleBase):
 
     @replay.named_side_effect('AgencyContractor.complete')
     def complete(self, report):
+        if not self._ensure_state(ContractState.granted):
+            return
+
         report = report.duplicate()
         self.debug("Sending final report %r", report)
 
-        self._ensure_state(ContractState.granted)
         self._set_state(ContractState.completed)
 
         expiration_time = time.future(self.contractor.bid_timeout)
@@ -593,7 +616,8 @@ class AgencyContractor(common.AgencyMiddleBase):
         self.set_timeout(announcement.expiration_time, ContractState.closed,
                          self._run_and_terminate,
                          self.contractor.announce_expired)
-        self.call_agent_side(self.contractor.announced, announcement)
+        self.call_agent_side(self.contractor.announced, announcement,
+                             ensure_state=ContractState.announced)
 
     def _on_grant(self, grant):
         '''
@@ -610,20 +634,25 @@ class AgencyContractor(common.AgencyMiddleBase):
         self.set_remote_id(grant.sender_id)
         self.update_manager_address(grant.reply_to)
 
-        self.call_agent_side(self.contractor.granted, grant)
+        self.call_agent_side(self.contractor.granted, grant,
+                             ensure_state=ContractState.granted)
 
     def _on_ack(self, msg):
-        d = self.call_agent_side(self.contractor.acknowledged, msg)
+        d = self.call_agent_side(self.contractor.acknowledged, msg,
+                                 ensure_state=ContractState.acknowledged)
         d.addCallback(self.finalize)
 
     def _on_reject(self, rejection):
-        self._run_and_terminate(self.contractor.rejected, rejection)
+        self._run_and_terminate(self.contractor.rejected, rejection,
+                                ensure_state=ContractState.rejected)
 
     def _on_cancel_in_granted(self, cancellation):
-        self._run_and_terminate(self.contractor.cancelled, cancellation)
+        self._run_and_terminate(self.contractor.cancelled, cancellation,
+                                ensure_state=ContractState.cancelled)
 
     def _on_cancel_in_completed(self, cancellation):
-        self._run_and_terminate(self.contractor.aborted)
+        self._run_and_terminate(self.contractor.aborted,
+                                ensure_state=ContractState.aborted)
 
 
 @adapter.register(IManagerFactory, IAgencyInitiatorFactory)

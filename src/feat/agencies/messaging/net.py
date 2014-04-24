@@ -555,7 +555,8 @@ class Channel(log.Logger, log.LogProxy, StateMachineMixin):
     ### Private methods managing setup and resetup ###
 
     def _setup_with_client(self, client):
-        self._ensure_state(ChannelState.recording)
+        if not self._ensure_state(ChannelState.recording):
+            return
 
         self.log("_setup_with_client called, starting channel configuration. "
                  "client=%r", client)
