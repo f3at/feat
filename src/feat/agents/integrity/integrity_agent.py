@@ -66,11 +66,11 @@ class IntegrityAgent(agent.BaseAgent):
     @replay.immutable
     @defer.inlineCallbacks
     def check_configured_replications(self, state):
-        self.debug("Checking status of configured replications.")
+        self.debug("checking status of configured replications")
         statuses = yield conflicts.get_replication_status(
             state.replicator, state.db_config.name)
         if not statuses:
-            self.debug("There is no replications configured. Exiting")
+            self.debug("No replications configured")
             return
         db = self.get_database()
         our_seq = yield db.get_update_seq()
