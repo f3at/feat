@@ -1055,8 +1055,10 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         self._database = None
 
         try:
+            hostname = socket.gethostname()
+            self.debug("socket hostname: %s", hostname)
             self._hostname = unicode(
-                socket.gethostbyaddr(socket.gethostname())[0])
+                socket.gethostbyaddr(hostname)[0])
             self._ip = unicode(socket.gethostbyname(self._hostname))
         except socket.gaierror:
             # this fixes the issues when office is out of internet ;)
