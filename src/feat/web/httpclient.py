@@ -302,8 +302,9 @@ class Protocol(http.BaseProtocol):
     def _get_target(self):
         scheme = ('https' if ISSLTransport.providedBy(self.transport) else
                   'http')
-        host = self.transport.addr[0]
-        port = self.transport.addr[1]
+        h = self.transport.getHost()
+        host = h.host
+        port = h.port
         return scheme, host, port
 
     def _cancel_request(self, d):

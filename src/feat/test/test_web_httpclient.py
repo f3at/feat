@@ -115,7 +115,7 @@ class TestConnection(common.TestCase):
         d.cancel()
         self.assertFailure(d, httpclient.RequestCancelled)
         f = yield d
-        exp = (r'GET to http://TCP:testsite.com/ was cancelled '
+        exp = (r'GET to http://10.0.0.1:12345/ was cancelled '
                '0.(\d+)s after it was sent.')
         self.assertTrue(re.match(exp, str(f)), str(f))
 
@@ -154,7 +154,7 @@ class TestConnection(common.TestCase):
         transport.protocol.process_timeout()
         self.assertFailure(d, httpclient.RequestTimeout)
         f = yield d
-        exp = ('GET to http://TCP:testsite.com/ failed '
+        exp = ('GET to http://10.0.0.1:12345/ failed '
                'because of timeout 0.(\d+)s after it was sent. '
                'When it happend it was waiting for the status line.')
         self.assertTrue(re.match(exp, str(f)), str(f))
@@ -179,7 +179,7 @@ class TestConnection(common.TestCase):
         transport.protocol.process_timeout()
         self.assertFailure(d, httpclient.RequestTimeout)
         f = yield d
-        exp = ('GET to http://TCP:testsite.com/ failed '
+        exp = ('GET to http://10.0.0.1:12345/ failed '
                'because of timeout 0.(\d+)s after it was sent. '
                'When it happend it was receiving the headers.')
         self.assertTrue(re.match(exp, str(f)), str(f))
@@ -187,7 +187,6 @@ class TestConnection(common.TestCase):
     def _make_connection(self, factory, addr):
         protocol = factory.buildProtocol(addr)
         transport = Transport()
-        transport.addr = addr
         transport.protocol = protocol
         protocol.makeConnection(transport)
         return transport
@@ -202,7 +201,6 @@ class TestProtocol(common.TestCase):
 
     def setUp(self):
         self.transport = StringTransportWithDisconnection()
-        self.transport.addr = ('testsite.com', 80)
         self.protocol = httpclient.Protocol(self, owner=None)
         self.protocol.factory = MockFactory()
         self.protocol.makeConnection(self.transport)
@@ -249,7 +247,7 @@ class TestProtocol(common.TestCase):
         self.assertFalse(self.transport.connected)
         self.assertFailure(d, httpclient.RequestCancelled)
         f = yield d
-        exp = ('GET to http://testsite.com:80/ was cancelled '
+        exp = ('GET to http://10.0.0.1:12345/ was cancelled '
                '0.(\d+)s after it was sent.')
         self.assertTrue(re.match(exp, str(f)), str(f))
 
