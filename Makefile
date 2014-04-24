@@ -29,6 +29,16 @@ check-tests-fast:
 
 check-doc: doc/reference/html/index.html
 
+check-zip:
+	-make check-tests FEAT_DEBUG=4 > test.out 2>&1
+	mkdir -p check
+	-mv test.out check
+	-mv _trial_temp check
+	-mv test.log check
+	git describe > check/feat.gitversion
+	zip -r check.zip check
+
+
 doc/reference/html/index.html: Makefile src
 	epydoc feat -o doc/reference/html -v --fail-on-warning | $(PYTHON) common/epyfilter.py common/efc.py
 
