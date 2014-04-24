@@ -31,6 +31,7 @@ check-doc: doc/reference/html/index.html
 
 check-zip:
 	-make check-tests FEAT_DEBUG=4 > test.out 2>&1
+	-rm -r check
 	mkdir -p check
 	-mv test.out check
 	-mv _trial_temp check
