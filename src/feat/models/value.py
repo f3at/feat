@@ -688,6 +688,24 @@ class Enum(Value):
         return Value._add_option(self, value, label)
 
 
+class FixedValues(Value):
+    '''
+    String value of one of defined options.
+
+    Use: FixedValue(["option1", "option2", ...])
+    '''
+
+    value_type(ValueTypes.string)
+    options_only()
+
+    implements(IValueOptions)
+
+    def __init__(self, values, *args, **kwargs):
+        Value.__init__(self, *args, **kwargs)
+        for v in values:
+            self._add_option(v)
+
+
 class Structure(Value):
 
     implements(IValueList)

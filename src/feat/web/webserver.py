@@ -1873,7 +1873,9 @@ class Response(log.Logger):
             return
 
         status = http.Status[self._request._ref.code].name
-        self._request.debug("Finishing the request. Status: %s", status)
+        elapsed = time.time() - self._request.received
+        self._request.debug("Finishing the request. Status: %s. "
+                            "Elapsed: %.2f s", status, elapsed)
 
         self._finished = time.time()
         try:

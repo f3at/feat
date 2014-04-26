@@ -1,3 +1,6 @@
+# -*- Mode: Python -*-
+# vi:si:et:sw=4:sts=4:ts=4
+
 # F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
 # Copyright (C) 2010,2011 Flumotion Services, S.A.
 # All rights reserved.
@@ -19,8 +22,6 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-# -*- Mode: Python -*-
-# vi:si:et:sw=4:sts=4:ts=4
 
 # Import standard library modules
 import copy
@@ -1054,8 +1055,10 @@ class Agency(log.LogProxy, log.Logger, manhole.Manhole,
         self._database = None
 
         try:
+            hostname = socket.gethostname()
+            self.debug("socket hostname: %s", hostname)
             self._hostname = unicode(
-                socket.gethostbyaddr(socket.gethostname())[0])
+                socket.gethostbyaddr(hostname)[0])
             self._ip = unicode(socket.gethostbyname(self._hostname))
         except socket.gaierror:
             # this fixes the issues when office is out of internet ;)

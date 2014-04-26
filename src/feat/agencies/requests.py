@@ -66,7 +66,9 @@ class AgencyRequester(common.AgencyMiddleBase):
         self.set_timeout(self.expiration_time, RequestState.closed,
                          self._run_and_terminate, self.requester.closed)
 
-        self.call_agent_side(requester.initiate, *self.args, **self.kwargs)
+        self.call_agent_side(requester.initiate, *self.args,
+                             ensure_state=RequestState.requested,
+                             **self.kwargs)
 
         return requester
 
@@ -76,7 +78,8 @@ class AgencyRequester(common.AgencyMiddleBase):
     def request(self, request):
         request = request.duplicate()
         self.log("Sending request: %r.", request)
-        self._ensure_state(RequestState.requested)
+        if not self._ensure_state(RequestState.requested):
+            return
 
         if request.traversal_id is None:
             request.traversal_id = str(uuid.uuid1())
@@ -102,7 +105,7 @@ class AgencyRequester(common.AgencyMiddleBase):
                  'method': self._on_reply}}
         handler = self._event_handler(mapping, msg)
         if callable(handler):
-            self.call_agent_side(handler, msg)
+            return handler(msg)
 
     ### ISerializable Methods ###
 
@@ -113,7 +116,8 @@ class AgencyRequester(common.AgencyMiddleBase):
 
     def _on_reply(self, msg):
         self.cancel_timeout()
-        d = self.call_agent_side(self.requester.got_reply, msg)
+        d = self.call_agent_side(self.requester.got_reply, msg,
+                                 ensure_state=RequestState.requested)
         d.addCallback(self.finalize)
         return d
 
@@ -184,7 +188,8 @@ class AgencyReplier(common.AgencyMiddleBase):
     def _requested(self, msg):
         self.set_timeout(msg.expiration_time, RequestState.closed,
                          self.finalize, None)
-        self.call_agent_side(self.replier.requested, msg)
+        self.call_agent_side(self.replier.requested, msg,
+                             ensure_state=RequestState.requested)
 
 
 @adapter.register(IRequesterFactory, IAgencyInitiatorFactory)

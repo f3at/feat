@@ -66,7 +66,8 @@ class HostAgentTests(common.SimulationTest):
 
     def testHostname(self):
         expected = 'test.host.lan_1'
-        expected_ip = socket.gethostbyname(socket.gethostname())
+        hostname = socket.gethostname()
+        expected_ip = socket.gethostbyname(hostname)
         agent = self.get_local('agent')
         self.assertEqual(agent.get_hostname(), expected)
         self.assertEqual(agent.get_ip(), expected_ip)
@@ -322,11 +323,14 @@ class SimulationStartAgentContract(common.SimulationTest):
         shard = self.agent.get_shard_id()
         res = dict(epu=20, core=1)
         recp = yield self.agent.request(shard, res)
-        doc = yield self.driver._database_connection.get_document(
-            IRecipient(recp).key)
+        db = self.driver._database_connection
+        doc = yield db.get_document(IRecipient(recp).key)
         self.assertIsInstance(doc.resources, dict)
         for key, val in res.iteritems():
             self.assertEqual(val, doc.resources[key].value)
+        yield self.wait_for_idle(20)
+        doc = yield db.reload_document(doc)
+
         host_id = doc.partners[0].recipient.key
         host_medium = yield self.driver.find_agent(host_id)
         host = host_medium.get_agent()
@@ -352,11 +356,14 @@ class SimulationStartAgentContract(common.SimulationTest):
         desc = yield self.driver.get_document(IRecipient(recp).key)
         medium = yield self.driver.find_agent(recp)
         self.assertTrue(medium is not None)
+        yield self.wait_for_idle(20)
+
         host = medium.get_agent().query_partners('hosts')[0]
         self.assertIsInstance(host, agent.HostPartner)
         yield medium.terminate_hard()
 
         res = dict(epu=10)
+        desc = yield self.driver._database_connection.reload_document(desc)
         new_recp = yield self.agent.request(shard, res, desc)
         self.assertEqual(recp, new_recp)
         medium = yield self.driver.find_agent(recp)

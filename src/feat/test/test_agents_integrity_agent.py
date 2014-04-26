@@ -1,4 +1,5 @@
 
+from feat.agents.base import alert
 from feat.agents.integrity import integrity_agent, api
 from feat.common import defer
 from feat.database import conflicts, emu
@@ -36,10 +37,10 @@ class _Base(common.TestCase, ModelTestMixin):
     @defer.inlineCallbacks
     def setUp(self):
         yield common.TestCase.setUp(self)
-        self.medium = dummies.DummyMedium(self)
+        self.connection = emu.Database().get_connection()
+        self.medium = dummies.DummyMedium(self, self.connection)
         self.agent = integrity_agent.IntegrityAgent(self.medium)
 
-        self.connection = emu.Database().get_connection()
         self.patch(conflicts, 'configure_replicator_database',
                    Method(defer.succeed(self.connection)))
         yield self.agent.initiate_agent()
@@ -76,6 +77,66 @@ class IntegrationAgentTest(_Base):
         # this should resolve alert
         self.assertIn('couchdb-conflicts', self.state.alert_statuses)
         self.assertEqual(0, self.state.alert_statuses['couchdb-conflicts'][0])
+
+    @defer.inlineCallbacks
+    def testCheckingReplicationStatus(self):
+        self.patch(self.connection, 'get_update_seq',
+                   lambda: defer.succeed(1000))
+
+        result = {
+            'triggered-up-to-date': [(1000, True, 'running', 'id1')],
+            'triggered-and-lagging': [(500, True, 'running', 'id2')],
+            'paused': [(500, False, 'completed', 'id3')],
+            'error': [(0, False, 'error', 'id4')],
+            'task_missing': [(0, True, 'task_missing', 'id4')],
+            }
+        self.patch(conflicts, 'get_replication_status',
+                   lambda _ig1, _ig2: defer.succeed(result))
+
+        yield self.agent.check_configured_replications()
+
+        alert_factories = self.agent.get_alert_factories()
+        names = result.keys()
+        self.assertTrue(set(names).issubset(set(alert_factories.keys())),
+                        repr((names, alert_factories.keys())))
+
+        statuses = self.agent.get_alert_statuses()
+        S = alert.Severity
+        self.assertEqual((0, 'ok', S.ok), statuses['triggered-up-to-date'])
+
+        info = ("The replication is running, but hasn't yet"
+                " reached the desired threshold of: 99 %. "
+                "Current progress is: 50 %")
+        self.assertEqual((1, info, S.warn), statuses['triggered-and-lagging'])
+
+        info = ("The replication is paused, last progress: 50 %.")
+        self.assertEqual((1, info, S.warn), statuses['paused'])
+
+        info = ("The replication is in error state.")
+        self.assertEqual((1, info, S.critical), statuses['error'])
+
+        info = (
+            'The continuous replication is triggered '
+            'but there is no active task running for it. '
+            'The only time I saw this case was due to the '
+            'bug in couchdb, which required restarting it. '
+            'Please investigate!')
+        self.assertEqual((1, info, S.critical), statuses['task_missing'])
+
+    def testNameOfReplicationAlert(self):
+        expected = [
+            ('feat2', 'feat2'),
+            ('https://api3-pro.getfinancing.com/feat',
+             'api3-pro.getfinancing.com/feat'),
+            ('https://featadmin:xxssaa@api3-pro.getfinancing.com/feat',
+             'api3-pro.getfinancing.com/feat'),
+            ('api3-pro.getfinancing.com/feat',
+             'api3-pro.getfinancing.com/feat'),
+            ]
+
+        for input, output in expected:
+            self.assertEqual(
+                output, self.agent.get_replication_alert_name(input))
 
 
 class ApiTest(_Base):
@@ -159,8 +220,9 @@ class ApiTest(_Base):
         self.patch(conflicts, 'get_replication_status', get_replication_status)
 
         result = {
-            'target1': [(4, True, 'completed', 'id1'),
-                        (10, True, 'triggered', 'id2')],
+            'target1': [(10, True, 'triggered', 'id2'),
+                        (4, True, 'completed', 'id1'),
+                        ],
             'target2': [(0, False, 'error', 'id3')]}
         get_replication_status.reset(defer.succeed(result))
         submodel = yield self.model_descend(self.model, 'replications')

@@ -94,8 +94,9 @@ class StateMachineMixin(object):
     def _ensure_state(self, states):
         if self._cmp_state(states):
             return True
-        raise StateAssertationError("Expected state in: %r, was: %r instead" %\
-                           (states, self.state))
+        self.debug("Expected state in: %r, was: %r instead",
+                   states, self.state)
+        return False
 
     def _get_machine_state(self):
         return self.state
@@ -119,9 +120,7 @@ class StateMachineMixin(object):
             decision = match[0]
 
         state_before = decision['state_before']
-        try:
-            self._ensure_state(state_before)
-        except StateAssertationError:
+        if not self._ensure_state(state_before):
             self.warning("Received event: %r in state: %r, expected state "
                          "for this method is: %r",
                          klass, self._get_machine_state(),
@@ -300,9 +299,18 @@ class AgencyMiddleBase(log.LogProxy, log.Logger, StateMachineMixin):
                                            "after finalize() method has been "
                                            "called. Method: %r" % (method, ))
 
+        ensure_state = kwargs.pop('ensure_state', None)
+
+
         d = defer.Deferred(canceller=self._cancel_agent_side_call)
         self._agent_jobs.append(d)
-        d.addCallback(defer.drop_param, method, *args, **kwargs)
+        if ensure_state:
+            # call method only if state check is checks in
+            d.addCallback(
+                lambda _: (self._ensure_state(ensure_state) and
+                           method(*args, **kwargs)))
+        else:
+            d.addCallback(defer.drop_param, method, *args, **kwargs)
         d.addErrback(self._error_handler, method)
         d.addBoth(defer.bridge_param, self._remove_agent_job, d)
         time.call_next(d.callback, None)
@@ -380,7 +388,8 @@ class AgencyMiddleBase(log.LogProxy, log.Logger, StateMachineMixin):
     def _timeout_target(self, state, callback, args, kwargs):
         if state:
             self._set_state(state)
-        self.call_agent_side(callback, *args, **kwargs)
+        self.call_agent_side(callback, *args, ensure_state=state,
+                             **kwargs)
 
     def _remove_agent_job(self, d):
         try:

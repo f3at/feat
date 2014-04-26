@@ -65,7 +65,6 @@ class ComplexMigration(migration.Migration):
         snapshot['field1'] += " upgraded"
         return snapshot, dict(name='attachment', body='Hi!')
 
-    @defer.inlineCallbacks
     def asynchronous_hook(self, connection, document, context):
         document.create_attachment(context['name'], context['body'])
         return connection.save_document(document)

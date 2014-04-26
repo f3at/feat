@@ -233,7 +233,8 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
             yield reader.delete_top_log_entries(len(entries))
 
     def configure_with(self, writer):
-        self._ensure_state(State.disconnected)
+        if not self._ensure_state(State.disconnected):
+            return
         twisted_log.addObserver(self.on_twisted_log)
         self._writer = IJournalWriter(writer)
         self._writer.configure_with(self)
@@ -862,7 +863,19 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         for key in to_blob:
             safe = data[key]
             if self._encoding:
-                safe = safe.encode(self._encoding)
+                try:
+                    safe = safe.encode(self._encoding)
+                except UnicodeEncodeError:
+                    self.warning("Failed to encode: %s to %s", safe,
+                                 self._encoding)
+                    try:
+                        safe = safe.encode('ascii', 'replace')
+                        safe = safe.encode(self._encoding)
+                    except UnicodeEncodeError:
+                        self.error("Encoding to ascii with replace didn't "
+                                   "help either. Skipping this piece of data "
+                                   "in the journal")
+                        safe = ""
             result[key] = sqlite3.Binary(safe)
 
         return result
@@ -1490,7 +1503,8 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
     ### IJournalReader ###
 
     def get_histories(self):
-        self._ensure_connected()
+        if not self._ensure_state(State.connected):
+            return
 
         def parse(rows):
             return [History(agent_id=x[0],
@@ -1507,7 +1521,8 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
         return d
 
     def get_bare_journal_entries(self, limit=1000):
-        self._ensure_connected()
+        if not self._ensure_state(State.connected):
+            return
 
         command = text_helper.format_block("""
         SELECT agent_id, instance_id, journal_id, function_id, fiber_id,
@@ -1521,7 +1536,8 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
         return d
 
     def delete_top_journal_entries(self, num):
-        self._ensure_connected()
+        if not self._ensure_state(State.connected):
+            return
 
         command = text_helper.format_block("""
         DELETE FROM feat.entries
@@ -1533,7 +1549,8 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
         return self._db.runOperation(command, (num, ))
 
     def get_entries(self, history, start_date=0, limit=None):
-        self._ensure_connected()
+        if not self._ensure_state(State.connected):
+            return
 
         if not isinstance(history, History):
             raise AttributeError(
@@ -1573,7 +1590,9 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     def get_log_entries(self, start_date=None, end_date=None, filters=list(),
                         limit=None):
-        self._ensure_connected()
+        if not self._ensure_state(State.connected):
+            return
+
 
         query = text_helper.format_block("""
         SELECT hosts.hostname, message, level, category, log_name,
@@ -1623,7 +1642,8 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
         return d
 
     def delete_top_log_entries(self, num):
-        self._ensure_connected()
+        if not self._ensure_state(State.connected):
+            return
 
         command = text_helper.format_block("""
         DELETE FROM feat.logs
@@ -1636,7 +1656,8 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
 
     def get_log_categories(self, start_date=None, end_date=None,
                            hostname=None):
-        self._ensure_connected()
+        if not self._ensure_state(State.connected):
+            return
 
         query = text_helper.format_block("""
         SELECT DISTINCT category FROM feat.logs
@@ -1733,9 +1754,6 @@ class PostgresReader(log.Logger, log.LogProxy, common.StateMachineMixin,
             query += "  AND date_part('epoch', timestamp) <= %s"
             params += (end_date, )
         return query, params
-
-    def _ensure_connected(self):
-        self._ensure_state(State.connected)
 
     ### callbacks for initiate() ###
 

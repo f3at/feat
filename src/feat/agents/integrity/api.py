@@ -17,6 +17,10 @@ class IntegrityAgent(models.Agent):
 
     model.child('replications', model='feat.integrity_agent.replications',
                 label="Replications")
+    model.command('trigger_replication_check',
+                  call.source_call('check_configured_replications'),
+                  response.done('Done'),
+                  result=value.Response())
 
 
 @featmodels.register_model
@@ -43,7 +47,6 @@ class Replications(model.Collection):
         rows = self.statuses.get(name)
         if not rows:
             return
-        rows.sort(key=operator.itemgetter(0), reverse=True)
         return rows[0]
 
     model.create('post',

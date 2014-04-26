@@ -61,7 +61,7 @@ class SingleHostAllocationSimulation(common.SimulationTest):
         host_medium = agency.start_agent(host_desc, hostdef=hostdef)
         host_agent = host_medium.get_agent()
 
-        host_agent.wait_for_ready()
+        wait_for_idle()
         host_agent.start_agent(req_desc)
         """)
 

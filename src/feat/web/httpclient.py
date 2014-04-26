@@ -167,13 +167,14 @@ class Protocol(http.BaseProtocol):
             decoder = ResponseDecoder()
         # The parameters below are used to format a nice error message
         # shall this request fail in any way
+        scheme, host, port = self._get_target()
+
         decoder.request_params = {
             'method': method.name,
             'location': location,
-            'scheme': 'https' if ISSLTransport.providedBy(self.transport) \
-                       else 'http',
-            'host': self.transport.addr[0],
-            'port': self.transport.addr[1],
+            'scheme': scheme,
+            'host': host,
+            'port': port,
             'started_epoch': time.time()}
 
         self._requests.append(decoder)
@@ -190,6 +191,8 @@ class Protocol(http.BaseProtocol):
     ### Overridden Methods ###
 
     def onConnectionMade(self):
+        scheme, host, port = self._get_target()
+        self.debug('Connected to %s://%s:%s', scheme, host, port)
         self.factory.onConnectionMade(self)
 
     def onConnectionLost(self, reason):
@@ -296,12 +299,20 @@ class Protocol(http.BaseProtocol):
 
     ### Private Methods ###
 
+    def _get_target(self):
+        scheme = ('https' if ISSLTransport.providedBy(self.transport) else
+                  'http')
+        h = self.transport.getHost()
+        host = h.host
+        port = h.port
+        return scheme, host, port
+
     def _cancel_request(self, d):
         p = d.decoder.request_params
         p['elapsed'] = time.time() - p['started_epoch']
         ex = RequestCancelled('%(method)s to %(scheme)s'
                               '://%(host)s:%(port)s%(location)s '
-                              'was cancelled by the user %(elapsed).3fs'
+                              'was cancelled %(elapsed).3fs'
                               ' after it was sent.' % p)
         d._suppressAlreadyCalled = True
         d.errback(ex)
@@ -436,20 +447,28 @@ class Connection(log.LogProxy, log.Logger):
         return self._protocol is None or self._protocol.is_idle()
 
     def request(self, method, location, headers=None, body=None, decoder=None):
-        self.debug('%s-ing on %s', method.name, location)
-        self.log('Headers: %r', headers)
-        self.log('Body: %r', body)
+        started = time.time()
         if self._protocol is None:
+            self.debug('%s-ing on %s. Creating new protocol for the request.',
+                       method.name, location)
             d = self._connect()
             d.addCallback(self._on_connected)
         else:
+            self.debug('%s-ing on %s. Reusing connected protocol for '
+                       'the request.', method.name, location)
             d = defer.succeed(self._protocol)
 
+        self.log('Headers: %r', headers)
+        self.log('Body: %r', body)
+
         d.addCallback(self._request, method, location, headers, body, decoder)
+        d.addBoth(defer.keep_param, self._log_request_result, method, location,
+                  started)
         return d
 
     def disconnect(self):
         if self._protocol:
+            self.debug('Disconnecting protocol')
             self._protocol.transport.loseConnection()
 
     ### virtual ###
@@ -458,7 +477,8 @@ class Connection(log.LogProxy, log.Logger):
         return self.factory(self, self, deferred)
 
     def onClientConnectionFailed(self, reason):
-        pass
+        self.info("Failed to connect to %s:%s. Reason: %s",
+                  self._host, self._port, reason)
 
     def onClientConnectionMade(self, protocol):
         pass
@@ -467,9 +487,21 @@ class Connection(log.LogProxy, log.Logger):
         pass
 
     def onClientConnectionLost(self, protocol, reason):
+        self.debug('Client connection lost because of %r, resetting protocol',
+            reason)
         self._protocol = None
 
     ### private ###
+
+    def _log_request_result(self, result, method, location, started):
+        elapsed = time.time() - started
+        if isinstance(result, failure.Failure):
+            self.debug("%s on %s failed with error: %s. Elapsed: %.2f",
+                       method.name, location, result.value, elapsed)
+        else:
+            self.debug('%s on %s finished with %s status, elapsed: %.2f',
+                       method.name, location, int(result.status),
+                       elapsed)
 
     def _connect(self):
         d = defer.Deferred(canceller=cancel_connector)
@@ -480,8 +512,8 @@ class Connection(log.LogProxy, log.Logger):
             kwargs['timeout'] = self.connect_timeout
         kwargs['bindAddress'] = self.bind_address
 
-        self.debug('Connecting to %s:%d using %s',
-            self._host, self._port, self._http_scheme.name)
+        self.debug('Connecting to %s://%s:%d',
+            self._http_scheme.name, self._host, self._port)
 
         if self._security_policy.use_ssl:
             context_factory = self._security_policy.get_ssl_context_factory()
@@ -523,7 +555,7 @@ def cancel_connector(d):
         return
     if d.connector.state == 'connecting':
         timeoutCall = d.connector.timeoutID
-        msg = ('Connection to %s:%s was cancelled by the user %.3f '
+        msg = ('Connection to %s:%s was cancelled %.3f '
                'seconds after it was initialized' %
                (d.connector.host, d.connector.port,
                 time.time() - timeoutCall.getTime() + d.connector.timeout))
@@ -592,6 +624,7 @@ class ConnectionPool(Connection):
     def request(self, method, location, headers=None, body=None, decoder=None,
                 outside_of_the_pool=False, dont_pipeline=False,
                 reset_retry=1):
+        started = time.time()
         self.debug('%s-ing on %s', method.name, location)
         self.log('Headers: %r', headers)
         self.log('Body: %r', body)
@@ -633,6 +666,8 @@ class ConnectionPool(Connection):
         d.addErrback(self._handle_connection_reset, method, location,
                      headers, body, decoder, outside_of_the_pool,
                      dont_pipeline, reset_retry)
+        d.addBoth(defer.keep_param, self._log_request_result,
+                  method, location, started)
         return d
 
     def _handle_connection_reset(self, fail, method, location,
