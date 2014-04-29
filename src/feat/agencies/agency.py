@@ -112,7 +112,9 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         # This is important when the agent creates an interest on startup
         # and bind it with .bind_to_lobby() call. Later on, when it
         # changes shard, the binding is preserved.
-        self._bindings_preserved_on_shard_change = weakref.WeakSet()
+        # NOTE: It would be better to use WeakSet() here, but it was
+        # introduced in python 2.7 and we need to stay compatibile with 2.6
+        self._bindings_preserved_on_shard_change = weakref.WeakKeyDictionary()
 
         self._notifier = defer.Notifier()
 
@@ -520,7 +522,8 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         recp = factory(key, shard)
         binding = self._messaging.create_binding(recp)
         if special_lobby_binding:
-            self._bindings_preserved_on_shard_change.add(binding)
+            # this is WeakKeyDictionary
+            self._bindings_preserved_on_shard_change[binding] = True
         return binding
 
     def revoke_binding(self, binding):
