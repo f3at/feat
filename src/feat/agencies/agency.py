@@ -108,6 +108,12 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self._interests = {} # {protocol_type: {protocol_id: IInterest}}
         self._long_running_protocols = [] # Long running protocols
 
+        # Bindings which should not be revoked when agent changes the shard.
+        # This is important when the agent creates an interest on startup
+        # and bind it with .bind_to_lobby() call. Later on, when it
+        # changes shard, the binding is preserved.
+        self._bindings_preserved_on_shard_change = weakref.WeakSet()
+
         self._notifier = defer.Notifier()
 
         self._database = None
@@ -302,7 +308,7 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     @serialization.freeze_tag('AgencyAgent.join_shard')
     def join_shard(self, shard):
-        self.log("Joining shard %r", shard)
+        self.debug("Joining shard %r", shard)
         # Rebind agents queue
         self.create_binding(self._descriptor.doc_id, shard, public=False)
         # Iterate over interest and create bindings
@@ -316,10 +322,17 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     @serialization.freeze_tag('AgencyAgent.leave_shard')
     def leave_shard(self, shard):
-        self.log("Leaving shard %r", shard)
+        self.debug("Leaving shard %r", shard)
         bindings = self._messaging.get_bindings(shard)
         for x in bindings:
-            self._messaging.revoke_binding(x)
+            if x not in self._bindings_preserved_on_shard_change:
+                self.debug("Revoking binding (%s, %s)",
+                           x.recipient.key, x.recipient.route)
+                self._messaging.revoke_binding(x)
+            else:
+                self.debug("Not revoking binding (%s, %s) because its"
+                           " mark to be preserved.",
+                           x.recipient.key, x.recipient.route)
 
     @replay.named_side_effect('AgencyAgent.register_interest')
     def register_interest(self, agent_factory, *args, **kwargs):
@@ -499,12 +512,16 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
 
     ### IAgencyAgentInternal Methods ###
 
-    def create_binding(self, key, shard=None, public=False):
+    def create_binding(self, key, shard=None, public=False,
+                       special_lobby_binding=False):
         '''Used by Interest instances.'''
         shard = shard or self.get_shard_id()
         factory = recipient.Broadcast if public else recipient.Agent
         recp = factory(key, shard)
-        return self._messaging.create_binding(recp)
+        binding = self._messaging.create_binding(recp)
+        if special_lobby_binding:
+            self._bindings_preserved_on_shard_change.add(binding)
+        return binding
 
     def revoke_binding(self, binding):
         self._messaging.revoke_binding(binding)

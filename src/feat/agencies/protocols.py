@@ -182,7 +182,8 @@ class BaseInterest(log.Logger):
             return
         prot_id = self.agent_factory.protocol_id
         self._lobby_binding = self.agency_agent.create_binding(
-            prot_id, 'lobby', public=True)
+            prot_id, 'lobby', public=True,
+            special_lobby_binding=True)
 
     @replay.named_side_effect('Interest.unbind_from_lobby')
     def unbind_from_lobby(self):
