@@ -88,9 +88,12 @@ class Client(log.Logger, log.LogProxy, common.ConnectionManager):
         return d
 
     def binding_created(self, binding):
-        pb = self._channel.bind(
-            binding.recipient.route, binding.recipient.key)
-        self._bindings[binding] = pb
+        existing = self._bindings.get(binding)
+        if not existing:
+            pb = self._channel.bind(
+                binding.recipient.route, binding.recipient.key)
+            self._bindings[binding] = pb
+        pb.refcount += 1
 
     def binding_removed(self, binding):
         try:
@@ -99,7 +102,9 @@ class Client(log.Logger, log.LogProxy, common.ConnectionManager):
             self.error("Tried to remove binding which is not registered. %r",
                        binding)
             return
-        pb.revoke()
+        pb.refcount -= 1
+        if pb.refcount == 0:
+            pb.revoke()
 
     def create_external_route(self, backend_id, **kwargs):
         if backend_id == 'rabbitmq':
@@ -323,6 +328,8 @@ class BaseBinding(object):
         self._failure = None
 
         self._channel._register_binding(self)
+
+        self.refcount = 0
 
     ### protected ###
 
