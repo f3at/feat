@@ -390,6 +390,8 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         self._cache.rollback()
         error.handle_failure(self, fail,
                            'Flushing entries to the writer failed')
+        if self._writer:
+            time.call_next(self._writer.close, flush=False)
         self._writer = None
         self._set_state(State.disconnected)
         self._flush_task = None
