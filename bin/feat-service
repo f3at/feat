@@ -102,6 +102,7 @@ def main(args):
     * pushinitialdata - Populate the database with the initial data
     * migrate - Run the migration script.
     * cleandescriptors - Remove all agent descriptors from the database.
+    * indexviews - Trigger CouchDB to rebuild the views, wait until its done.
     """)
 
     logger.debug('Running command: %s', " ".join(sys.argv))
@@ -322,9 +323,39 @@ def main(args):
                           dry_run=opts.dry_run)
         sys.exit(context.failed and 1 or 0)
 
+    if command == 'indexviews':
+        c = config.parse_service_config()
+
+        parser = _importing_parser(optparse.OptionParser())
+        opts, args = parser.parse_args(args)
+
+        from feat.database import tools
+        context = tools.dbscript(c.db)
+
+        with context as d:
+            d.addCallback(index_views)
+        sys.exit(context.failed and 1 or 0)
+
+
     logger.error("No such command, %s", command)
     print usage
     sys.exit(1)
+
+
+@defer.inlineCallbacks
+def index_views(connection):
+    from feat.database import tools, view
+
+    docs = view.generate_design_docs()
+    results = yield defer.DeferredList(
+        [tools.rebuild_view_index(connection, doc) for doc in docs])
+    for index, (successful, result) in enumerate(results):
+        if not successful:
+            error.handle_failure(
+                None, result,
+                'Failed triggering rebuild of view index of '
+                'the document %s', docs[index].doc_id)
+            defer.returnValue(result)
 
 
 @defer.inlineCallbacks
