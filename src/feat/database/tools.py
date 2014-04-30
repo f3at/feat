@@ -23,7 +23,7 @@ import optparse
 import os
 import re
 
-from twisted.internet import reactor
+from twisted.internet import reactor, task
 
 from feat.database import view, driver, document
 from feat.agencies.net import options, config
@@ -365,3 +365,91 @@ def view_aterator(connection, callback, view, view_keys=dict(),
 
         if not records:
             break
+
+
+def rebuild_view_index(connection, design_doc):
+    return RebuildViewIndex(connection, design_doc).start(10)
+
+
+class RebuildViewIndex(task.LoopingCall, log.Logger):
+    '''
+    LoopingCall() responsible for the view rebuild. On its first call
+    it triggeres the view rebuild and waits until indexer has done its job.
+    '''
+
+    def __init__(self, connection, design_doc):
+        log.Logger.__init__(self, connection)
+        self.connection = connection
+        self.db = connection._database
+
+        self.design_doc = design_doc
+        self.count = 0
+        self.query_defer = None
+        if design_doc.views:
+            self.query = view.AdhocQuery(design_doc.doc_id,
+                                         design_doc.views.keys()[0])
+        else:
+            self.query = None
+        task.LoopingCall.__init__(self, self.iterate)
+
+    @defer.inlineCallbacks
+    def iterate(self):
+        if not self.query:
+            self.info("Design document id: %s has no views to rebuild",
+                      self.design_doc.doc_id)
+            self.stop()
+            return
+
+        self.count += 1
+
+        if self.count == 1:
+            self.trigger_rebuild()
+        else:
+            from feat.common import first
+
+            active_tasks = yield self.db.couchdb_call(
+                self.db.couchdb.get, '/_active_tasks')
+            relevant = first(
+                x for x in active_tasks
+                if (x.get('type') == 'indexer' and
+                    x.get('database') == self.db.db_name and
+                    x.get('design_document') == self.design_doc.doc_id))
+
+            if relevant:
+                self.info('The progress of updating %s is %s%%',
+                          self.design_doc.doc_id, relevant.get('progress'))
+                # if the updater is in progress don't wait for the view
+                # result
+                if self.query_defer:
+                    self.debug('Not waiting for the result of the query.')
+                    self.query_defer.cancel()
+            else:
+                self.trigger_rebuild()
+
+    def trigger_rebuild(self):
+        if self.query_defer:
+            # already querying
+            return
+        self.query_defer = d = self.connection.query_view(self.query, limit=1)
+        d.addCallbacks(defer.drop_param, self.query_failed,
+                       callbackArgs=(self.query_completed, ))
+
+    def query_completed(self):
+        self.query_defer = None
+        self.info("Index calculation of design document %s is complete."
+                  " It took %2.1f seconds", self.design_doc.doc_id,
+                  self.clock.seconds() - self.starttime)
+        self.stop()
+
+    def query_failed(self, fail):
+        self.query_defer = None
+
+        if fail.check(defer.CancelledError):
+            # This is result of *us* cancelling the query not to
+            # run into timeout
+            pass
+        else:
+            d, self.deferred = self.deferred, defer.Deferred()
+            d.errback(fail)
+            self.stop()
+

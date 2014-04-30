@@ -19,9 +19,11 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from twisted.internet import defer
+import mock
 
-from feat.database import tools, document, migration
+from twisted.internet import defer, task
+
+from feat.database import tools, document, migration, view, driver, client
 from feat.test import common
 from feat.test.integration.common import SimulationTest
 from feat.common import serialization
@@ -156,3 +158,113 @@ class IntegrationWithSimulation(SimulationTest):
         yield SimulationTest.tearDown(self)
         current = tools.get_current_initials()
         self.assertFalse(isinstance(current[-1], SomeDocument))
+
+
+class SomeView(view.BaseView):
+
+    name = "some_view"
+    design_doc_id = "test_design_doc"
+
+    def map(doc):
+        yield None, True
+
+
+class TestTriggeringViewUpdate(common.TestCase):
+
+    configurable_attributes = ['views']
+
+    views = [SomeView]
+
+    def setUp(self):
+        common.TestCase.setUp(self)
+
+        self.connection = mock.Mock(spec=client.Connection)
+        self.view_query_defers = list()
+        self.connection.query_view = mock.Mock(side_effect=self._query_view)
+        self.db = mock.Mock(spec=driver.Database)
+        self.db.db_name = 'dbname'
+        self.connection._database = self.db
+        self.active_task_responses = list()
+        self.db.couchdb_call = mock.Mock(side_effect=self._get_active_tasks)
+        self.db.couchdb = mock.Mock(spec=driver.CouchDB)
+
+        self.clock = task.Clock()
+
+        ddoc = view.DesignDocument.generate_from_views(self.views)
+        if ddoc:
+            ddoc = ddoc[0]
+        else:
+            ddoc = view.DesignDocument(doc_id="test_design_doc")
+
+        self.design_doc = ddoc
+
+        self.task = tools.RebuildViewIndex(self.connection, self.design_doc)
+        self.task.clock = self.clock
+
+        # redirect log to testcase
+        self.task._logger = self
+        self.task.log_category = 'task'
+        self.task.log_name = 'task'
+
+    @defer.inlineCallbacks
+    def testSuccessfulTrigger(self):
+        d = self.task.start(1)
+        query = self.view_query_defers[0]
+        query.callback([])
+        yield d
+
+    @defer.inlineCallbacks
+    def testFailToQuery(self):
+        d = self.task.start(1)
+        query = self.view_query_defers[0]
+        query.errback(driver.DatabaseError('nope!'))
+
+        self.assertFailure(d, driver.DatabaseError)
+
+        yield d
+
+    @defer.inlineCallbacks
+    @common.attr(views=[])
+    def testDocWithoutView(self):
+        yield self.task.start(1)
+        self.assertEqual(0, len(self.view_query_defers))
+
+    @defer.inlineCallbacks
+    def testHaveToWait(self):
+        self.active_task_responses = [
+            [# first run shows some progress
+             {'type': 'indexer',
+              'database': self.db.db_name,
+              'design_document': self.design_doc.doc_id,
+              'progress': 50},
+             ],
+            # seconf run shows no indexer
+            [],
+            ]
+
+        d = self.task.start(1)
+        query = self.view_query_defers[0]
+
+        self.assertEqual(2, len(self.active_task_responses)) #no response consumed yet
+
+        self.clock.advance(1) # this should fire next iteration
+
+        self.assertTrue(query.called) #should be cancelled
+        self.assertIsNone(self.task.query_defer)
+        self.assertEqual(1, len(self.active_task_responses)) #first response consumed
+
+        self.clock.advance(1) # this should fire third iteration
+        query = self.view_query_defers[1]
+        query.callback([])
+
+        yield d
+
+    def _get_active_tasks(self, method, location):
+        assert method is self.db.couchdb.get, repr(method)
+        assert location == '/_active_tasks', repr(location)
+
+        return self.active_task_responses.pop(0)
+
+    def _query_view(self, factory, **params):
+        self.view_query_defers.append(defer.Deferred())
+        return self.view_query_defers[-1]

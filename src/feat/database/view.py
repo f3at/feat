@@ -23,7 +23,7 @@ import re
 import inspect
 import types
 
-from zope.interface import directlyProvides
+from zope.interface import directlyProvides, implements
 
 from feat.common import formatable, annotate
 from feat.common.text_helper import format_block
@@ -84,6 +84,25 @@ class JavascriptView(annotate.Annotable):
                                   "evaluating the %s callback. If you need "
                                   "to use it, you should overload it." %
                                   (cls, what))
+
+
+class AdhocQuery(object):
+    """
+    Use this class to query view defined outside of application context
+    in the design documents which are not under control of feat.
+    """
+
+    implements(IViewFactory)
+
+    def __init__(self, design_doc_id, name):
+        if design_doc_id.startswith('_design/'):
+            design_doc_id = design_doc_id.split('/', 1)[1]
+        self.design_doc_id = design_doc_id
+        self.name = name
+        self.use_reduce = True
+
+    def parse_view_result(self, rows, reduced, include_docs):
+        return rows
 
 
 class BaseView(annotate.Annotable):

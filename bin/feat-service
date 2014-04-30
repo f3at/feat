@@ -383,48 +383,13 @@ def rotate_views(connection, to_rotate):
 
 @defer.inlineCallbacks
 def update_design_doc(connection, design_doc):
-    from twisted.internet import task
-    from feat import applications
+    from feat.database import tools
 
     postfix = '-' + str(int(time.time()))
     design_doc.doc_id += postfix
     logger.info("Saving temporary document id: %s", design_doc.doc_id)
     design_doc = yield connection.save_document(design_doc)
-    if not design_doc.views:
-        logger.info("Design document id: %s has no views to rebuild",
-                    design_doc.doc_id)
-    else:
-        view_factory = applications.get_view_registry().lookup(
-            design_doc.views.keys()[0])
-        # create a children class bound to temporary design document
-        view_factory = type(
-            view_factory.__name__, (view_factory, ),
-            {'design_doc_id': view_factory.design_doc_id + postfix})
-        reporter = task.LoopingCall(report_progress, connection,
-                                    design_doc.doc_id)
-        reporter.start(10)
-        start = time.time()
-        yield connection.query_view(view_factory, limit=1)
-        if reporter.running:
-            reporter.stop()
-        logger.info("Index calculation of design document %s is complete."
-                    " It took %2.1f seconds", design_doc.doc_id,
-                    time.time() - start)
-
-
-@defer.inlineCallbacks
-def report_progress(connection, doc_id):
-    from feat.common import first
-
-    db = connection._database
-    active_tasks = yield db.couchdb_call(db.couchdb.get, '/_active_tasks')
-    relevant = first(x for x in active_tasks
-                     if (x.get('type') == 'indexer' and
-                         x.get('database') == db.db_name and
-                         x.get('design_document') == doc_id))
-    if relevant:
-        logger.info('The progress of updating %s is %s%%', doc_id,
-                    relevant.get('progress'))
+    yield tools.rebuild_view_index(connection, design_doc)
 
 
 @defer.inlineCallbacks
