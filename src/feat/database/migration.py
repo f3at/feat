@@ -21,8 +21,8 @@ class Migration(object):
             self.source_ver = source_ver
         if target_ver is not None:
             self.target_ver = target_ver
-            if type_name is not None:
-                self.type_name = type_name
+        if type_name is not None:
+            self.type_name = type_name
 
         if self.source_ver is None:
             raise ValueError("You have to set source version")
