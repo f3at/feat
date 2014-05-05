@@ -25,7 +25,7 @@ import sys
 
 from zope.interface import implements, classProvides
 
-from feat.common import serialization
+from feat.common import serialization, defer
 from feat.interface.generic import ITimeProvider
 
 
@@ -739,6 +739,45 @@ class ExpQueue(ExpBase):
         self._heap = new_heap
         self._last_pack = now
         self._max_size.add_point(len(new_heap))
+
+
+class AsyncDict(object):
+
+    def __init__(self):
+        self._values = []
+        self._info = []
+
+    def add_if_true(self, key, value):
+        self.add(key, value, bool)
+
+    def add_if_not_none(self, key, value):
+        self.add(key, value, lambda v: v is not None)
+
+    def add_result(self, key, value, method_name, *args, **kwargs):
+        if not isinstance(value, defer.Deferred):
+            value = defer.succeed(value)
+        value.addCallback(self._call_value, method_name, *args, **kwargs)
+        self.add(key, value)
+
+    def add(self, key, value, condition=None):
+        if not isinstance(value, defer.Deferred):
+            value = defer.succeed(value)
+        self._info.append((key, condition))
+        self._values.append(value)
+
+    def wait(self):
+        d = defer.DeferredList(self._values, consumeErrors=True)
+        d.addCallback(self._process_values)
+        return d
+
+    ### private ###
+
+    def _process_values(self, param):
+        return dict((k, v) for (s, v), (k, c) in zip(param, self._info)
+                    if s and (c is None or c(v)))
+
+    def _call_value(self, value, method_name, *args, **kwargs):
+        return getattr(value, method_name)(*args, **kwargs)
 
 
 ## Private Stuff ###

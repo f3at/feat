@@ -26,6 +26,7 @@ from zope.interface import implements
 
 from feat.common import defer, serialization, error, log
 from feat.common.serialization import json as feat_json
+from feat.common.container import AsyncDict
 from feat.web import document
 
 from feat.models.interface import IModel, IReference
@@ -40,45 +41,6 @@ MIME_TYPE = "application/json"
 
 class ActionPayload(dict):
     implements(IActionPayload)
-
-
-class AsyncDict(object):
-
-    def __init__(self):
-        self._values = []
-        self._info = []
-
-    def add_if_true(self, key, value):
-        self.add(key, value, bool)
-
-    def add_if_not_none(self, key, value):
-        self.add(key, value, lambda v: v is not None)
-
-    def add_result(self, key, value, method_name, *args, **kwargs):
-        if not isinstance(value, defer.Deferred):
-            value = defer.succeed(value)
-        value.addCallback(self._call_value, method_name, *args, **kwargs)
-        self.add(key, value)
-
-    def add(self, key, value, condition=None):
-        if not isinstance(value, defer.Deferred):
-            value = defer.succeed(value)
-        self._info.append((key, condition))
-        self._values.append(value)
-
-    def wait(self):
-        d = defer.DeferredList(self._values, consumeErrors=True)
-        d.addCallback(self._process_values)
-        return d
-
-    ### private ###
-
-    def _process_values(self, param):
-        return dict((k, v) for (s, v), (k, c) in zip(param, self._info)
-                    if s and (c is None or c(v)))
-
-    def _call_value(self, value, method_name, *args, **kwargs):
-        return getattr(value, method_name)(*args, **kwargs)
 
 
 def render_metadata(obj):
