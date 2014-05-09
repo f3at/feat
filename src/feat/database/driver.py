@@ -22,6 +22,7 @@
 import types
 import operator
 from urllib import urlencode, quote
+import urlparse
 
 from zope.interface import implements
 from twisted.internet import error as tw_error, task
@@ -305,6 +306,33 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener):
 
         self._configure(host, port, db_name, username, password,
                         https)
+
+    @classmethod
+    def from_canonical_url(cls, url):
+        parsed = urlparse.urlparse(url)
+
+        if parsed.path.startswith('/'):
+            dbname = parsed.path[1:]
+        else:
+            dbname = parsed.path
+
+        if '@' in parsed.netloc:
+            cred, host_port = parsed.netloc.split('@', 1)
+            username, password = cred.split(':', 1)
+        else:
+            host_port = parsed.netloc or 'localhost'
+            username, password = None, None
+
+        if ':' in host_port:
+            host, port = host_port.split(':', 1)
+            port = int(port)
+        else:
+            host = host_port
+            port = DEFAULT_DB_PORT
+
+        https = (parsed.scheme == 'https')
+
+        return cls(host, port, dbname, username, password, https)
 
     def reconfigure(self, host, port, name, username=None, password=None,
                     https=False):

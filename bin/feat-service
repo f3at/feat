@@ -103,6 +103,8 @@ def main(args):
     * migrate - Run the migration script.
     * cleandescriptors - Remove all agent descriptors from the database.
     * indexviews - Trigger CouchDB to rebuild the views, wait until its done.
+    * fakereplicationlogs - Use dark sorcery to convince CouchDB that all
+                            its configured replications are up to date.
     """)
 
     logger.debug('Running command: %s', " ".join(sys.argv))
@@ -334,6 +336,19 @@ def main(args):
 
         with context as d:
             d.addCallback(index_views)
+        sys.exit(context.failed and 1 or 0)
+
+    if command == 'fakereplicationlogs':
+        c = config.parse_service_config()
+
+        parser = _importing_parser(optparse.OptionParser())
+        opts, args = parser.parse_args(args)
+
+        from feat.database import tools, conflicts
+        context = tools.dbscript(c.db)
+
+        with context as d:
+            d.addCallback(conflicts.fake_replicator_logs)
         sys.exit(context.failed and 1 or 0)
 
 

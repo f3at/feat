@@ -4,7 +4,7 @@ from twisted.python.failure import Failure
 
 from feat.agents.application import feat
 from feat.common.text_helper import format_block
-from feat.common import defer, error, first
+from feat.common import defer, error, first, log
 from feat.database import view, driver, update
 
 from feat.database.interface import NotFoundError, IDocument
@@ -389,6 +389,99 @@ def get_replication_status(rconnection, source):
         rows.sort(key=operator.itemgetter(0), reverse=True)
 
     defer.returnValue(result)
+
+
+@defer.inlineCallbacks
+def fake_replicator_logs(connection):
+    '''
+    Manipulate the internals of couchdb to mark all the replications
+    going out of the database as up-to-date.
+    '''
+    logger = log.Logger(connection)
+
+    db = connection._database
+    rconnection = yield configure_replicator_database(
+        db.host, db.port, db.username, db.password)
+    source = db.db_name
+
+    # replication_id -> [doc]
+    todo = dict()
+    replications = yield rconnection.query_view(
+        Replications,
+        key=('source', source),
+        include_docs=True)
+    logger.debug("Analyzing %d replication documents", len(replications))
+
+    for replication in replications:
+        target_name = replication.get('target')
+        if not target_name:
+            logger.warning("The replication document fetched doesn't"
+                           " have the target set. Ignoring it. Doc: %s",
+                           replication)
+            continue
+        replication_id = replication.get('_replication_id')
+        if not replication_id:
+            logger.warning("Ignoring replication without the replication_id"
+                           " set. Document: %s", replication)
+
+        todo.setdefault(replication_id, list())
+        todo[replication_id].append(replication)
+
+    for replication_id, documents in todo.iteritems():
+        target_name = documents[0]['target']
+        if not any(x.get('continuous') for x in documents):
+            logger.info("Non of the %d replication documents to %s -> %s "
+                        "is continuous. Skipping this target.",
+                        len(documents), source, target_name)
+            continue
+
+        logger.info("Faking replication logs for the replication %s -> %s."
+                    " Replication id: %s", source, target_name,
+                    replication_id)
+
+        db = driver.Database.from_canonical_url(target_name)
+        target = db.get_connection()
+
+        seq = yield connection.get_update_seq()
+
+        for replication in documents:
+            yield rconnection.delete_document(replication)
+
+        session_id = 'faked-session-id'
+        doc_id = '_local/' + replication_id
+        fake_log = {
+            '_id': doc_id,
+            'history': [{
+                'session_id': session_id,
+                'recorded_seq': seq,
+                }],
+            'replication_id_version': 2,
+            'session_id': session_id,
+            'source_last_seq': seq}
+
+        for where, conn in zip(('source', 'target'), (connection, target)):
+            logger.info("Faking replication log in the %s", where)
+            to_save = dict(fake_log)
+            try:
+                rev = yield conn.get_revision(doc_id)
+            except NotFoundError:
+                logger.debug("The replication log was not present in the %s",
+                             where)
+            else:
+                to_save['_rev'] = rev
+
+            yield conn.save_document(to_save)
+
+        logger.info('Retriggering the replication.')
+
+        doc = {
+            'source': source,
+            'target': target_name,
+            'filter': 'featjs/replication',
+            'continuous': True,
+            '_replication_id': replication_id,
+            }
+        yield rconnection.save_document(doc)
 
 
 @defer.inlineCallbacks
