@@ -166,7 +166,7 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
             return self.use_next_writer()
 
     def use_next_writer(self, force_index=None):
-        self.log("Will use next journaler target on the list")
+        self.debug("Will use next journaler target on the list")
         if not self._possible_targets:
             raise ValueError("_possible targets are empty")
 
@@ -181,7 +181,7 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
         klass, kwargs = self._possible_targets[self._current_target_index]
         kwargs['hostname'] = self._hostname
 
-        writer = klass(self, **kwargs)
+        writer = klass(logger=log.get_default(), **kwargs)
         d = self.close(flush_writer=False)
         d.addCallback(defer.drop_param, self.configure_with, writer)
         d.addCallback(defer.drop_param, writer.initiate)
@@ -774,7 +774,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         self._history_id_cache = dict()
 
     def _sighup_handler(self, signum, frame):
-        self.log("Received SIGHUP, reopening the journal.")
+        self.debug("Received SIGHUP, reopening the journal.")
         if self._journaler:
             time.call_next(self._journaler.on_rotate)
         self.close()
@@ -785,7 +785,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
             return
         if self._filename == ':memory:':
             return
-        self.log('Installing SIGHUP handler.')
+        self.debug('Installing SIGHUP handler.')
         signal.signal(signal.SIGHUP, self._sighup_handler)
         self._sighup_installed = True
 
@@ -795,7 +795,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
 
         try:
             signal.unregister(signal.SIGHUP, self._sighup_handler)
-            self.log("Uninstalled SIGHUP handler.")
+            self.debug("Uninstalled SIGHUP handler.")
         except ValueError:
             self.warning("Unregistering of sighup failed. Straaange!")
         self._sighup_installed = False
@@ -967,7 +967,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
 
         def run_all(connection, commands):
             for command in commands:
-                self.log('Executing command:\n %s', command)
+                self.debug('Executing command:\n %s', command)
                 connection.execute(command)
 
         insert_meta = "INSERT INTO metadata VALUES('%s', '%s')"
