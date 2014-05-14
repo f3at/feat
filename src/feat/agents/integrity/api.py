@@ -89,12 +89,44 @@ class Replication(model.Model):
                                                 call.model_perform('pause'),
                                                 response.done('done')],
                                        result_info=value.Response()))
+
+    model.action('resume',
+                 action.MetaAction.new('perform_resume',
+                                       ActionCategories.command,
+                                       effects=[effect.context_value('key'),
+                                                call.model_filter('resume')],
+                                       result_info=value.Response()))
+
+
     model.delete('del',
                  effect.context_value('key'),
                  call.model_perform('delete'),
                  response.deleted("Replication deleted"),
                  label="Delete",
                  desc=("Delete all the replication documents"))
+
+    @defer.inlineCallbacks
+    def resume(self, value):
+        state = self.source._get_state()
+        connection = state.replicator
+        statuses = yield conflicts.get_replication_status(
+            connection, state.db_config.name)
+
+        if value in statuses:
+            seq, continuous, status, r_id = statuses[value][0]
+            if continuous and status == 'running':
+                defer.returnValue(
+                    response.Done(
+                        None,
+                        "There already is an continuous replication in "
+                        " running status to %s target. Not doing anything."
+                        % (value, )))
+
+        doc = {'source': unicode(state.db_config.name),
+               'target': value,
+               'continuous': True, 'filter': u'featjs/replication'}
+        doc = yield connection.save_document(doc)
+        defer.returnValue(response.Done(None, "done"))
 
     def delete(self, value):
         state = self.source._get_state()

@@ -384,9 +384,10 @@ def get_replication_status(rconnection, source):
 
     # Sort the results so that the first row for the target
     # is the row with the highest update_seq, aka the most
-    # recent one.
+    # recent one. Secondary sorting is done to promote continuous
+    # replication over the 1-time replication.
     for rows in result.itervalues():
-        rows.sort(key=operator.itemgetter(0), reverse=True)
+        rows.sort(key=lambda x: (x[0], x[1]), reverse=True)
 
     defer.returnValue(result)
 
