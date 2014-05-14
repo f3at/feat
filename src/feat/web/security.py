@@ -142,11 +142,30 @@ class BaseContextFactory(object):
             opts |= SSL.VERIFY_FAIL_IF_NO_PEER_CERT
             ctx.set_verify(opts, self._verify_callback)
 
+            # Line below solves the problem of
+            # "SSL_GET_PREV_SESSION:session id context uninitialized".
+            # Citing the explaination from the mail archive of the openssl
+            # group.
+            ##
+            # You need to set the session id context so that sessions which
+            # use client authentication which are cached have the same
+            # context id value. This is a security measure where servers
+            # might have different security requirements for different
+            # sessions to ensure that a client can't resume an inappropriate
+            # session.
+            #
+            # What you set it to doesn't matter as long as it is set to
+            # something.
+            ctx.set_session_id('sessionid')
+
         return ctx
 
     ### private ###
 
     def _verify_callback(self, connection, x509, errnum, errdepth, ok):
+        log.debug("ssl-context", "In _verify_callback, id(connection): %s",
+                  id(connection))
+
         if not ok:
             log.warning("ssl-context", "Invalid certificate: %s",
                         x509.get_subject())
