@@ -163,9 +163,6 @@ class BaseContextFactory(object):
     ### private ###
 
     def _verify_callback(self, connection, x509, errnum, errdepth, ok):
-        log.debug("ssl-context", "In _verify_callback, id(connection): %s",
-                  id(connection))
-
         if not ok:
             log.warning("ssl-context", "Invalid certificate: %s",
                         x509.get_subject())
