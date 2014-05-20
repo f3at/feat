@@ -135,8 +135,6 @@ class AlertAgent(agent.BaseAgent):
 
     @replay.mutable
     def initiate(self, state):
-        state.medium.register_interest(AlertsCollector)
-
         state.config = state.medium.agency.get_config().nagios
         state.nagios = self.dependency(INagiosSenderLabourFactory, self,
                                        state.config)
@@ -152,6 +150,7 @@ class AlertAgent(agent.BaseAgent):
 
     @replay.journaled
     def startup(self, state):
+        state.medium.register_interest(AlertsCollector)
         state.medium.initiate_protocol(PushNagiosStatus, 3600) # once an hour
         # 23 hours after we started we want the get rid of any persistent
         # services which noone claimed responsibility for
