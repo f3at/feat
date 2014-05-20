@@ -23,7 +23,9 @@
 # vi:si:et:sw=4:sts=4:ts=4
 from zope.interface import implements
 
-from feat.common import text_helper, fiber, error
+from twisted.internet import task as itask
+
+from feat.common import text_helper, fiber, error, log, serialization
 from feat.agents.base import agent, replay, descriptor, collector
 from feat.agents.base import dependency, manager, task
 
@@ -359,6 +361,7 @@ class AlertAgent(agent.BaseAgent):
     def _parse_discovery_response(self, state, response):
         changed = False
         old_keys = state.alerts.keys()
+        to_save = list()
         for agent in response:
             for alert in agent.alerts:
                 if not self._check_should_handle_alert(agent, alert.name):
@@ -371,9 +374,7 @@ class AlertAgent(agent.BaseAgent):
                 changed = True
                 state.alerts[key] = new = AlertService.from_alert(alert, agent)
                 if new.persistent:
-                    self.info("Persisting the service definition in couchdb. "
-                              "%r", new)
-                    self.call_next(state.medium.save_document, new)
+                    to_save.append(new)
                 status = agent.statuses.get(alert.name)
                 if status:
                     state.alerts[key].received_count = status[0]
@@ -385,7 +386,27 @@ class AlertAgent(agent.BaseAgent):
                 # responsible for them at the moment
                 changed = True
                 del(state.alerts[key])
+
+        if to_save:
+            db = self.get_database()
+            self.call_next(itask.coiterate,
+                           SaveAlertsCooperatively(self, db, to_save))
+
         return changed
+
+
+@feat.register_restorator
+class SaveAlertsCooperatively(serialization.Serializable, log.Logger):
+
+    def __init__(self, log_keeper, db, docs):
+        log.Logger.__init__(self, log_keeper)
+        self._db = db
+        self._iter = iter(docs)
+
+    def next(self):
+        doc = self._iter.next()
+        self.info("Persisting the service definition in couchdb. %r", doc)
+        return self._db.save_document(doc)
 
 
 class AlertsDiscoveryManager(manager.BaseManager):
