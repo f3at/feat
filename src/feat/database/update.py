@@ -10,7 +10,7 @@ def attributes(document, params, force_save=False):
             key = (key, )
         actual = document
         for part in key[:-1]:
-            if isinstance(actual, dict):
+            if isinstance(actual, dict) or isinstance(part, int):
                 actual = actual[part]
             else:
                 actual = getattr(actual, part)
