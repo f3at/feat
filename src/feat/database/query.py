@@ -398,11 +398,11 @@ class Query(serialization.Serializable):
                    ' the form (handler, field), passed: %r')
 
             if not isinstance(aggregate, list):
-                raise ValueError(msg % aggregate)
+                raise ValueError(msg % (aggregate, ))
             for entry in aggregate:
                 if not (isinstance(entry, (list, tuple)) and
                         len(entry) == 2):
-                    raise ValueError(msg % entry)
+                    raise ValueError(msg % (entry, ))
                 handler, field = entry
                 if not handler in self.aggregations:
                     raise ValueError("Unknown aggregate handler: %r" %
