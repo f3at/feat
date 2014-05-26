@@ -81,6 +81,15 @@ class FeatError(Exception):
         self.error_code = kwargs.pop('code', default_code)
         self.error_name = kwargs.pop('name', default_name)
 
+        if args and isinstance(args[0], unicode):
+            # Exception don't like passing them unicode strings
+            # as a message. Here we do our best to encode it
+            try:
+                encoded = args[0].encode('utf8')
+            except:
+                encoded = args[0].encode('ascii', 'replace')
+            args = (encoded, ) + args[1:]
+
         Exception.__init__(self, *args, **kwargs)
 
         self.cause_details = None

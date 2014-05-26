@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-.
+
 import json
 
 from zope.interface import implements
@@ -52,6 +54,12 @@ class TestError(common.TestCase):
 
     def _errback(self, fail):
         error.handle_failure(self.logger, fail, "Error handler: ")
+
+    def testExceptionUnicode(self):
+        a = u'Adrián'
+        exp = error.FeatError(a)
+        msg = str(exp)
+        self.assertIsInstance(msg, str)
 
     def testHandleException(self):
         xlog.setDebug('4')
