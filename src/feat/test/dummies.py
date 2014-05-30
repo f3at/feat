@@ -22,13 +22,12 @@
 from zope.interface import implements
 
 from feat.common import defer, time, log, journal, fiber, adapter, first
-from feat.agents.base import descriptor, requester, replier, replay, cache
+from feat.agents.base import descriptor, requester, replier, replay
 from feat.agencies import protocols, common, message
 from feat.agencies.net import config
 from feat.database import emu as database
 
 from feat.agencies.interface import IAgencyInterestInternalFactory
-from feat.database.interface import NotFoundError
 from feat.interface.protocols import IInterest, InterestType
 from feat.interface.agent import IAgencyAgent, AgencyAgentState
 from feat.interface.agency import ExecMode
@@ -258,7 +257,8 @@ class DummyProtocol(object):
         return self.deferred
 
     def execute(self, agent):
-        instance = self.factory(agent, DummyMedium(agent))
+        instance = self.factory(agent,
+                                DummyProtocolMedium(agent, self.factory))
         d = instance.initiate(*self.args, **self.kwargs)
         d.chainDeferred(self.deferred)
         return self.deferred
@@ -270,6 +270,17 @@ class DummyProtocol(object):
 
     def finalize(self):
         pass
+
+
+class DummyProtocolMedium(DummyMedium):
+
+    def __init__(self, agent, factory):
+        DummyMedium.__init__(self, agent)
+        self._agent = agent
+        self._expiration_time = agent.get_time() + factory.timeout
+
+    def get_expiration_time(self):
+        return self._expiration_time
 
 
 @adapter.register(IInterest, IAgencyInterestInternalFactory)
