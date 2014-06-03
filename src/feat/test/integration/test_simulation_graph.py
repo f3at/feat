@@ -81,12 +81,12 @@ class CommonMixin(object):
         for expectation, value in expected.iteritems():
             self.assertEqual(value, seen[expectation],
                              "Expected %d shard with %d partners, got %d. "
-                             "This happend while having %d agents in total." %\
+                             "This happened while having %d agents in total." %\
                              (value, expectation, seen[expectation],
                               self.count_agents()))
         self.assertEqual(expected_kings, seen_kings,
                          "Expected the graph to have %d kings, %d seen. "
-                         "This happend while having %d agents in total." %\
+                         "This happened while having %d agents in total." %\
                          (expected_kings, seen_kings, self.count_agents()))
 
     @defer.inlineCallbacks

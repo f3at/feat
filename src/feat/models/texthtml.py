@@ -16,7 +16,7 @@ MIME_TYPE = "text/html"
 
 class RelativeContext(object):
     '''This context is used for rendering error pages and detachted models.
-    It may happend that gateway does not provide the context for the request,
+    It may happened that gateway does not provide the context for the request,
     than all the urls are rendered relative.'''
 
     implements(IContext)

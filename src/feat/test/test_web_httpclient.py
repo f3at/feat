@@ -156,7 +156,7 @@ class TestConnection(common.TestCase):
         f = yield d
         exp = ('GET to http://10.0.0.1:12345/ failed '
                'because of timeout 0.(\d+)s after it was sent. '
-               'When it happend it was waiting for the status line.')
+               'When it happened it was waiting for the status line.')
         self.assertTrue(re.match(exp, str(f)), str(f))
 
     @defer.inlineCallbacks
@@ -181,7 +181,7 @@ class TestConnection(common.TestCase):
         f = yield d
         exp = ('GET to http://10.0.0.1:12345/ failed '
                'because of timeout 0.(\d+)s after it was sent. '
-               'When it happend it was receiving the headers.')
+               'When it happened it was receiving the headers.')
         self.assertTrue(re.match(exp, str(f)), str(f))
 
     def _make_connection(self, factory, addr):

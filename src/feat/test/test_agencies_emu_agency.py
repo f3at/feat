@@ -168,7 +168,7 @@ class TestAgencyAgent(common.TestCase, common.AgencyTestHelper):
         self.agent.revoke_interest(DummyReplier)
         self.assertFalse('dummy-request' in self.agent._interests['Request'])
 
-        #calling once again nothing bad should happend
+        #calling once again nothing bad should happened
         req = self.agent.revoke_interest(DummyReplier)
         self.assertFalse(req)
 

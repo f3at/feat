@@ -285,7 +285,7 @@ class Protocol(http.BaseProtocol):
                '://%(host)s:%(port)s%(location)s '
                'failed because of timeout '
                '%(elapsed).3fs after it was sent. '
-               'When it happend it was %(state_description)s.'
+               'When it happened it was %(state_description)s.'
                % p)
         self._client_error(RequestTimeout(msg))
 

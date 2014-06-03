@@ -53,7 +53,7 @@ class Resolver(client.Resolver):
     def _filter_refused(self, message):
         if message.rCode == dns.EREFUSED:
             # normal twisted resolver would only reissue the query in case
-            # the timeout happend. This is annoying when you try to use
+            # the timeout happened. This is annoying when you try to use
             # dns serves which refuse some queries.
             # Here the hack is to overwrite the exception,
             # so that it looks like a timeout.
