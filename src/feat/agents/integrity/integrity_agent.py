@@ -187,7 +187,9 @@ class IntegrityAgent(agent.BaseAgent):
         except KeyError:
             pass
         if state.unsolvable_conflicts:
-            self.raise_alert(ALERT_NAME, ', '.join(state.unsolvable_conflicts))
+            self.raise_alert(ALERT_NAME,
+                             '%d documents are in conflict' %
+                             (len(state.unsolvable_conflicts, )))
         else:
             self.resolve_alert(ALERT_NAME, 'ok')
 
