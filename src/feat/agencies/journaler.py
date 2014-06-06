@@ -868,8 +868,6 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
                 try:
                     safe = safe.encode(self._encoding)
                 except UnicodeEncodeError:
-                    self.warning("Failed to encode: %s to %s", safe,
-                                 self._encoding)
                     try:
                         safe = safe.encode('ascii', 'replace')
                     except UnicodeEncodeError:
@@ -877,6 +875,7 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
                                    "help either. Skipping this piece of data "
                                    "in the journal")
                         safe = ""
+
             result[key] = sqlite3.Binary(safe)
 
         return result
