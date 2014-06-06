@@ -872,7 +872,6 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
                                  self._encoding)
                     try:
                         safe = safe.encode('ascii', 'replace')
-                        safe = safe.encode(self._encoding)
                     except UnicodeEncodeError:
                         self.error("Encoding to ascii with replace didn't "
                                    "help either. Skipping this piece of data "
