@@ -716,7 +716,7 @@ class Agent(model.Model):
     model.attribute("description", value.String(),
                     getter=call.model_call("get_description"),
                     label="Description",
-                    desc="Descirption specific to the agent's instance")
+                    desc="Description specific to the agent's instance")
 
     model.child("partners",
                 model="feat.partners",
