@@ -452,4 +452,3 @@ class RebuildViewIndex(task.LoopingCall, log.Logger):
             d, self.deferred = self.deferred, defer.Deferred()
             d.errback(fail)
             self.stop()
-

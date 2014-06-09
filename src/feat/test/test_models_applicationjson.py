@@ -85,7 +85,6 @@ class DummyError(object):
         self.stamp = None
 
 
-
 class DummySnapshotable(serialization.Snapshotable):
 
     def __init__(self):
