@@ -439,6 +439,7 @@ class Value(BaseValue):
 
     def _set_default(self, default):
         self._default = self._validate_default(default)
+
         self._use_default = True
 
     def _add_option(self, value, label=None):
@@ -677,9 +678,6 @@ class Enum(Value):
     ### overridden ###
 
     def _validate_option(self, value):
-        return unicode(self.validate(value).name)
-
-    def _validate_default(self, value):
         return unicode(self.validate(value).name)
 
     def _add_option(self, value, label=None):

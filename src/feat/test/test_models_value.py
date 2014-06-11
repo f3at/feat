@@ -484,8 +484,8 @@ class TestModelsValue(common.TestCase):
         self.assertTrue(interface.IValueOptions.providedBy(v))
         self.assertEqual(v.value_type, interface.ValueTypes.string)
         self.assertTrue(v.use_default)
-        self.assertEqual(v.default, DummyEnum.toto.name)
-        self.assertTrue(isinstance(v.default, unicode))
+        self.assertEqual(v.default, DummyEnum.toto)
+        self.assertTrue(isinstance(v.default, DummyEnum))
 
         self.assertEqual(v.validate(None), DummyEnum.toto)
         self.assertEqual(v.publish(None), u"toto")
@@ -495,8 +495,8 @@ class TestModelsValue(common.TestCase):
 
         v = value.Enum(DummyEnum, default=DummyEnum.tata)
         self.assertTrue(v.use_default)
-        self.assertEqual(v.default, DummyEnum.tata.name)
-        self.assertTrue(isinstance(v.default, unicode))
+        self.assertEqual(v.default, DummyEnum.tata)
+        self.assertTrue(isinstance(v.default, DummyEnum))
 
         self.assertEqual(v.validate(None), DummyEnum.tata)
         self.assertEqual(v.publish(None), u"tata")
