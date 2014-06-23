@@ -7,7 +7,6 @@ from feat.test import common, dummies
 from feat.agents.nagios import nagios_agent
 from feat.agencies import recipient
 from feat.agents.common import rpc
-from feat.agents.base import singleton
 
 
 class NagiosAgentTest(common.TestCase):
@@ -18,8 +17,6 @@ class NagiosAgentTest(common.TestCase):
 
         self.medium = dummies.DummyMedium(self)
         self.agent = nagios_agent.NagiosAgent(self.medium)
-        # this defines state.singleton_tasks
-        yield singleton.AgentMixin.initiate(self.agent)
 
     @defer.inlineCallbacks
     def testUpdateConfig(self):
@@ -35,7 +32,7 @@ class NagiosAgentTest(common.TestCase):
         self.agent._get_state().nagios_configs['key'] = body
         # simulate receiving the config, the update task should be triggered
         yield self.agent.config_changed(recp, body)
-        self.assertEqual(['update-nagios'],
+        self.assertEqual(['singleton-update-nagios'],
                          [x.factory.protocol_id
                           for x in self.medium.protocols])
         self.medium.reset()

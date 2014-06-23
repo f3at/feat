@@ -2,7 +2,7 @@ import os
 
 from feat.common import fiber, error
 
-from feat.agents.base import agent, collector, descriptor, replay, singleton
+from feat.agents.base import agent, collector, descriptor, replay, protocols
 from feat.agents.base import task
 from feat.agents.common import monitor
 from feat.process.base import ProcessState
@@ -19,7 +19,7 @@ class Descriptor(descriptor.Descriptor):
 
 
 @feat.register_agent('nagios_agent')
-class NagiosAgent(agent.BaseAgent, singleton.AgentMixin):
+class NagiosAgent(agent.BaseAgent):
 
     restart_strategy = monitor.RestartStrategy.local
 
@@ -33,6 +33,7 @@ class NagiosAgent(agent.BaseAgent, singleton.AgentMixin):
 
         desc = self.get_descriptor()
         state.update_command = update_command or desc.update_command
+        state.UpdateNagios = protocols.Singleton(UpdateNagios)
         return self._save_config()
 
     @replay.mutable
@@ -40,7 +41,7 @@ class NagiosAgent(agent.BaseAgent, singleton.AgentMixin):
         self.info("Received new nagios configs, storing it, and triggering "
                   "the UpdateNagios task.")
         state.nagios_configs[origin.key] = body
-        self.singleton_task(UpdateNagios, origin, state.update_command)
+        self.initiate_protocol(state.UpdateNagios, origin, state.update_command)
 
     @replay.immutable
     def get_config(self, state, key):
