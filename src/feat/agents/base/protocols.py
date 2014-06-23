@@ -22,9 +22,12 @@
 from zope.interface import implements
 
 from feat.agents.base import replay
-from feat.common import log, fiber
+from feat.common import log, fiber, defer, serialization
 
-from feat.interface.protocols import *
+from feat.agencies.interface import IAgencyInitiatorFactory
+from feat.interface.protocols import IAgentProtocol, ProtocolCancelled
+from feat.interface.protocols import IInitiatorFactory, IInterested
+from feat.interface.protocols import IInitiator
 
 
 class BaseProtocol(log.Logger, replay.Replayable):
@@ -108,3 +111,96 @@ class BaseInterested(BaseProtocol):
     @replay.immutable
     def get_expiration_time(self, state):
         return state.medium.get_expiration_time()
+
+
+class Singleton(serialization.Serializable):
+    '''
+    To be used like:
+
+      factory = Singleton(SomeOtherFactory, min_delay_between_runs=5)
+      ...
+      agent.initiate_protocol(factory, *args, **kwargs)
+
+    This will ensure that only one instance of this task runs at the time.
+    Any call done while the task is running will be ignored.
+
+    Additionally this factory can specify the minimum time that has to
+    pass between subsequent runs of the task. If its specified, the
+    execution of the next run is scheduleged in future instead of
+    being performed right away.
+    '''
+
+    implements(IInitiatorFactory, IAgencyInitiatorFactory)
+
+    def __init__(self, factory, min_delay_between_runs=0):
+        self._min_delay_between_runs = min_delay_between_runs
+
+        self.factory = IInitiatorFactory(factory)
+
+        self._next_run_epoch = None
+        self._agency_agent = None
+        self._medium = None
+
+    ### IInitiatorFactory ###
+
+    @property
+    def protocol_id(self):
+        return 'singleton-' + self.factory.protocol_id
+
+    @property
+    def protocol_type(self):
+        return self.factory.protocol_type
+
+    ### IAgencyProtocolInternal ###
+
+    def notify_finish(self):
+        return self._medium.notify_finish()
+
+    def initiate(self):
+        ctime = self._agency_agent.get_time()
+        if (self._next_run_epoch is None or
+            ctime > self._next_run_epoch):
+            return self._medium.initiate()
+        else:
+            remaining = self._next_run_epoch - ctime
+            self._agency_agent.debug(
+                "Scheduling execution of %s.%s protocol %s in seconds",
+                self.factory.protocol_type, self.factory.protocol_id,
+                remaining)
+            self._agency_agent.call_later(remaining, self._medium.initiate)
+            return
+
+    @property
+    def guid(self):
+        return self._medium.guid
+
+    def cleanup(self):
+        return self._medium.cleanup()
+
+    def get_agent_side(self):
+        return self._medium.get_agent_side()
+
+    ### IAgencyInitiatorFactory ###
+
+    def __call__(self, agency_agent, *args, **kwargs):
+        self._agency_agent = agency_agent
+        if self._medium is not None:
+            self._agency_agent.log(
+                'Singleton protocol %s.%s is currently running. '
+                'Refusing running another instance',
+                self.factory.protocol_type,
+                self.factory.protocol_id)
+            return
+
+        medium_factory = IAgencyInitiatorFactory(self.factory)
+        self._medium = medium_factory(agency_agent, *args, **kwargs)
+        self._medium.notify_finish().addBoth(defer.drop_param, self._run_finished)
+
+        return self
+
+    ### private ###
+
+    def _run_finished(self):
+        ctime = self._agency_agent.get_time()
+        self._next_run_epoch = ctime + self._min_delay_between_runs
+        self._medium = None

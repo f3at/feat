@@ -374,7 +374,33 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
     @serialization.freeze_tag('AgencyAgent.initiate_protocol')
     @replay.named_side_effect('AgencyAgent.initiate_protocol')
     def initiate_protocol(self, factory, *args, **kwargs):
-        return self._initiate_protocol(factory, args, kwargs)
+        factory = IInitiatorFactory(factory)
+        self.debug('Initiating protocol %s.%s, args: %r, kwargs: %r',
+                   factory.protocol_type, factory.protocol_id, args, kwargs)
+        medium_factory = IAgencyInitiatorFactory(factory)
+        medium = medium_factory(self, *args, **kwargs)
+
+        if medium is None:
+            self.debug('Protocol factory declined running the protocol %s.%s.',
+                       factory.protocol_type, factory.protocol_id)
+            return
+
+        done = medium.notify_finish()
+        done.addErrback(Failure.trap, ProtocolFailed)
+
+        if IAgencyProtocolInternal.providedBy(medium):
+            self.register_protocol(medium)
+            self.journal_protocol_created(factory, medium, args, kwargs)
+            done.addBoth(defer.drop_param, self.unregister_protocol, medium)
+
+        if ILongRunningProtocol.providedBy(medium):
+            # This interface is implemented by the simpler protocols
+            # (example: RetryingProtocol).
+            self._long_running_protocols.append(medium)
+            cb = lambda _: self._long_running_protocols.remove(medium)
+            done.addBoth(cb)
+
+        return medium.initiate()
 
     @serialization.freeze_tag('AgencyAgency.save_document')
     def save_document(self, document):
@@ -669,32 +695,6 @@ class AgencyAgent(log.LogProxy, log.Logger, manhole.Manhole,
         self._notifier.callback(channel_type, self)
         self.debug("Channel %s enabled for agent %s",
                    channel_type, self.get_full_id())
-
-    def _initiate_protocol(self, factory, args, kwargs):
-        self.debug('Initiating protocol %s.%s, args: %r, kwargs: %r',
-                   factory.protocol_type, factory.protocol_id, args, kwargs)
-        args = args or ()
-        kwargs = kwargs or {}
-        factory = IInitiatorFactory(factory)
-        medium_factory = IAgencyInitiatorFactory(factory)
-        medium = medium_factory(self, *args, **kwargs)
-
-        done = medium.notify_finish()
-        done.addErrback(Failure.trap, ProtocolFailed)
-
-        if IAgencyProtocolInternal.providedBy(medium):
-            self.register_protocol(medium)
-            self.journal_protocol_created(factory, medium, args, kwargs)
-            done.addBoth(defer.drop_param, self.unregister_protocol, medium)
-
-        if ILongRunningProtocol.providedBy(medium):
-            # This interface is implemented by the simpler protocols
-            # (example: RetryingProtocol).
-            self._long_running_protocols.append(medium)
-            cb = lambda _: self._long_running_protocols.remove(medium)
-            done.addBoth(cb)
-
-        return medium.initiate()
 
     def _subscribe_for_descriptor_changes(self):
         return self._database.changes_listener(

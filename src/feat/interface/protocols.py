@@ -86,14 +86,17 @@ class IAgencyInterest(Interface):
 class IAgencyProtocol(Interface):
     '''Base interface for all agency-side protocol mediumns.'''
 
-    def is_idle(self):
+    def initiate():
+        pass
+
+    def notify_finish():
+        pass
+
+    def is_idle():
         '''Returns if the protocol is idle.'''
 
-    def terminate(result=None):
+    def finalize(result=None):
         '''Called to terminate the protocol with the given result.'''
-
-    def fail(failure):
-        '''Called by agent-side when a protocol has failed or canceled.'''
 
 
 class IInterest(Interface):
