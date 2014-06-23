@@ -80,9 +80,15 @@ class TestAdapters(common.TestCase):
         self.assertNotEqual(result1a, result2)
 
     def testUnserializeUnicodeError(self):
-        a = ('{".state": [".tuple", [".type", "exceptions.UnicodeEncodeError"], '
-             '[".tuple", "ascii", "DataX does not confirm the data for XXXX/YYYYYYY/1234. '
-             'Match code=0", 44, 46, "ordinal not in range(128)"], {}], ".type": "exception"}')
+        a = ('{'
+                '".state": [".tuple", ['
+                    '".type", "exceptions.UnicodeEncodeError"], '
+                    '[".tuple", "ascii", '
+                        '"DataX does not confirm the data for '
+                        'XXXX/YYYYYYY/1234. '
+                        'Match code=0", 44, 46, "ordinal not in range(128)"],'
+                        ' {}], '
+                '".type": "exception"}')
         ex = self.unserializer.convert(a)
         str(ex) # this line was causing seg fault before the fix
 

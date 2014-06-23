@@ -78,7 +78,7 @@ check-commit:
 	fi;								\
 	cd /tmp;							\
 	git clone --recursive --depth 0 $$repo;				\
-	cd $$reponame/src;						\
+	cd $$reponame;							\
 	make check-local;						\
 	cd $$current;							\
 	rm -rf $$dst;

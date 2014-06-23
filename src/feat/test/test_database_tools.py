@@ -245,13 +245,15 @@ class TestTriggeringViewUpdate(common.TestCase):
         d = self.task.start(1)
         query = self.view_query_defers[0]
 
-        self.assertEqual(2, len(self.active_task_responses)) #no response consumed yet
+        # no response consumed yet
+        self.assertEqual(2, len(self.active_task_responses))
 
         self.clock.advance(1) # this should fire next iteration
 
-        self.assertTrue(query.called) #should be cancelled
+        self.assertTrue(query.called) # should be cancelled
         self.assertIsNone(self.task.query_defer)
-        self.assertEqual(1, len(self.active_task_responses)) #first response consumed
+        # first response consumed
+        self.assertEqual(1, len(self.active_task_responses))
 
         self.clock.advance(1) # this should fire third iteration
         query = self.view_query_defers[1]
