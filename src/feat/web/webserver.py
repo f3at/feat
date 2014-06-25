@@ -1352,7 +1352,6 @@ class Request(log.Logger, log.LogProxy):
         self._method = method
         self._protocol = protocol
         self._credentials = None
-        self._body = None
 
         self._context = {} # Black box
 
@@ -1465,17 +1464,6 @@ class Request(log.Logger, log.LogProxy):
         return self._context
 
     @property
-    def body(self):
-        if not self._ref.content:
-            # GET/HEAD/OPTIONS requests don't have body
-            return
-
-        if self._body is None:
-            raise ValueError(
-                "read() method was not called on this instance yet, ")
-        return self._body.getvalue()
-
-    @property
     def headers(self):
         return dict(
             (k, v[-1])
@@ -1549,13 +1537,6 @@ class Request(log.Logger, log.LogProxy):
         limit = 1000
         limited = res if len(res) < limit else res[0:limit] + "..."
         self.debug("Read request body: %r", limited)
-        if self._body is None:
-            # Cache what we read so far to be able to retrieve it later
-            if self.length is not None and length < 100000:
-                self._body = StringIO()
-            else:
-                self._body = tempfile.TemporaryFile()
-        self._body.write(res)
         return res
 
     def readline(self, size=-1, decode=True):
@@ -1931,6 +1912,9 @@ class Response(log.Logger):
 
         # Always try to finish
 
+        if self._server.statistics:
+            self._server.statistics.request_finished(self._request, self)
+
         try:
             self._request._ref.finish()
         except http.HTTPError:
@@ -1938,11 +1922,6 @@ class Response(log.Logger):
         except Exception, e:
             msg = "Exception during response finalization"
             error.handle_exception(self, e, msg)
-        finally:
-            if self._server.statistics:
-                self._server.statistics.request_finished(self._request, self)
-            if isinstance(self._request._body, types.FileType):
-                self._request._body.close()
 
     ### private ###
 
