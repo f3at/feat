@@ -25,6 +25,8 @@ import os
 import re
 import sys
 import time
+import tempfile
+import types
 
 from zope.interface import Interface, Attribute, implements
 
@@ -1350,6 +1352,7 @@ class Request(log.Logger, log.LogProxy):
         self._method = method
         self._protocol = protocol
         self._credentials = None
+        self._body = None
 
         self._context = {} # Black box
 
@@ -1461,6 +1464,23 @@ class Request(log.Logger, log.LogProxy):
     def context(self):
         return self._context
 
+    @property
+    def body(self):
+        if not self._ref.content:
+            # GET/HEAD/OPTIONS requests don't have body
+            return
+
+        if self._body is None:
+            raise ValueError(
+                "read() method was not called on this instance yet, ")
+        return self._body.getvalue()
+
+    @property
+    def headers(self):
+        return dict(
+            (k, v[-1])
+            for k, v in self._ref.requestHeaders.getAllRawHeaders())
+
     def _get_cancelled(self):
         return self._cancelled
 
@@ -1529,6 +1549,13 @@ class Request(log.Logger, log.LogProxy):
         limit = 1000
         limited = res if len(res) < limit else res[0:limit] + "..."
         self.debug("Read request body: %r", limited)
+        if self._body is None:
+            # Cache what we read so far to be able to retrieve it later
+            if self.length is not None and length < 100000:
+                self._body = StringIO()
+            else:
+                self._body = tempfile.TemporaryFile()
+        self._body.write(res)
         return res
 
     def readline(self, size=-1, decode=True):
@@ -1667,6 +1694,19 @@ class Response(log.Logger):
     @property
     def bytes(self):
         return self._bytes
+
+    @property
+    def headers(self):
+        return dict(
+            (k, v[-1])
+            for k, v in self._request._ref.responseHeaders.getAllRawHeaders())
+
+    @property
+    def body(self):
+        if self._cache:
+            return self._cache.getvalue()
+        raise ValueError("This Response is configured to write the response "
+                         "directly to the socket file descriptor")
 
     def do_not_cache(self):
         data = self._cache and self._cache.getvalue()
@@ -1881,7 +1921,6 @@ class Response(log.Logger):
         try:
             if self._cache is not None:
                 data = self._cache.getvalue()
-                self._cache = None
                 self.prepare()
                 self._request._ref.write(self._encode(data))
         except http.HTTPError:
@@ -1902,6 +1941,8 @@ class Response(log.Logger):
         finally:
             if self._server.statistics:
                 self._server.statistics.request_finished(self._request, self)
+            if isinstance(self._request._body, types.FileType):
+                self._request._body.close()
 
     ### private ###
 
