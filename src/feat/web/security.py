@@ -367,7 +367,7 @@ def _create_ssl_context(key_filename=None,
     @type  verify_ca_from_p12: C{bool}
     """
 
-    ctx = SSL.Context(SSL.SSLv3_METHOD)
+    ctx = SSL.Context(SSL.SSLv23_METHOD)
 
     if p12_filename is not None:
 
