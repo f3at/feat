@@ -132,4 +132,3 @@ class LoopingCall(StealthPeriodicTask):
 
     def run(self):
         return self._method(*self._args, **self._kwargs)
-

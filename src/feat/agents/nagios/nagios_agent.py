@@ -41,7 +41,8 @@ class NagiosAgent(agent.BaseAgent):
         self.info("Received new nagios configs, storing it, and triggering "
                   "the UpdateNagios task.")
         state.nagios_configs[origin.key] = body
-        self.initiate_protocol(state.UpdateNagios, origin, state.update_command)
+        self.initiate_protocol(state.UpdateNagios, origin,
+                               state.update_command)
 
     @replay.immutable
     def get_config(self, state, key):

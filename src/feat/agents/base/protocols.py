@@ -194,7 +194,8 @@ class Singleton(serialization.Serializable):
 
         medium_factory = IAgencyInitiatorFactory(self.factory)
         self._medium = medium_factory(agency_agent, *args, **kwargs)
-        self._medium.notify_finish().addBoth(defer.drop_param, self._run_finished)
+        self._medium.notify_finish().addBoth(defer.drop_param,
+                                             self._run_finished)
 
         return self
 
