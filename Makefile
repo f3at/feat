@@ -5,6 +5,7 @@ TOOLS = tools
 TRIAL = ${TOOLS}/flumotion-trial
 PEP8 = ${TOOLS}/pep8.py --repeat
 SHOW_COVERAGE = ${TOOLS}/show-coverage.py
+GIT_REVISION = $(shell git describe || echo 'unknown')
 
 check-local: check-tests check-local-pep8
 
@@ -37,7 +38,7 @@ check-zip:
 	-mv _trial_temp check
 	-mv test.log check
 	git describe > check/feat.gitversion
-	zip -r check.zip check
+	zip -r check-$(GIT_REVISION).zip check
 
 
 doc/reference/html/index.html: Makefile src
