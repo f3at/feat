@@ -144,6 +144,8 @@ class TestCase(unittest.TestCase, log.LogProxy, log.Logger):
                 methodName = defaults[0]
             unittest.TestCase.__init__(self, methodName=methodName)
 
+        self.log_name = self.id()
+
         # Skip slow tests if '--skip-slow' option is enabled
         if _getConfig().get('skip-slow'):
             if self.getSlow() and not self.getSkip():
