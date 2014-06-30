@@ -400,7 +400,7 @@ class AgencyMiddleBase(log.LogProxy, log.Logger, StateMachineMixin):
             pass
 
     def _error_handler(self, f, method):
-        if f.check(defer.CancelledError):
+        if f.check(defer.CancelledError, ProtocolExpired):
             # this is what happens when the call is cancelled by the
             # _call() method, just swallow it
             pass
