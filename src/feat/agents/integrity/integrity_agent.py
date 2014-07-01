@@ -165,11 +165,14 @@ class IntegrityAgent(agent.BaseAgent):
 
     def handle_conflicts(self, ids):
         self.info("Detected %d conflicts", len(ids))
-        d = defer.succeed(None)
-        for doc_id in ids:
-            d.addCallback(defer.drop_param, self.conflict_cb,
-                          doc_id, rev=None, deleted=False, own_change=False)
-        return d
+        if ids:
+            d = defer.succeed(None)
+            for doc_id in ids:
+                d.addCallback(defer.drop_param, self.conflict_cb,
+                              doc_id, rev=None, deleted=False, own_change=False)
+            return d
+        else:
+            self.resolve_alert(ALERT_NAME, 'ok')
 
     @replay.immutable
     def conflict_cb(self, state, doc_id, rev, deleted, own_change):
