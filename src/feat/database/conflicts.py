@@ -414,9 +414,9 @@ def cleanup_logs(connection, rconnection):
     keys = UpdateLogs.until_seq(own_tag, cleanup_seq)
     rows = yield connection.query_view(UpdateLogs, **keys)
     for row in rows:
-        deletes_count += 1
         in_conflict, raw_doc = yield _check_conflict(connection, row[1])
         if not in_conflict:
+            deletes_count += 1
             yield _cleanup_update_log(connection, row[2])
 
     # this is cleanup of the update logs imported from remote partinions
