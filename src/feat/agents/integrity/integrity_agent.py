@@ -1,5 +1,7 @@
 import urlparse
 
+from twisted.internet import task as itask
+
 from feat.agents.application import feat
 from feat.agents.base import agent, descriptor, replay, task, alert
 from feat.common import error, fiber, defer
@@ -166,16 +168,12 @@ class IntegrityAgent(agent.BaseAgent):
     def handle_conflicts(self, ids):
         self.info("Detected %d conflicts", len(ids))
         if ids:
-            d = defer.succeed(None)
-            for doc_id in ids:
-                d.addCallback(defer.drop_param, self.conflict_cb,
-                              doc_id, rev=None, deleted=False, own_change=False)
-            return d
+            return itask.coiterate((self.conflict_cb(doc_id) for doc_id in ids))
         else:
             self.resolve_alert(ALERT_NAME, 'ok')
 
     @replay.immutable
-    def conflict_cb(self, state, doc_id, rev, deleted, own_change):
+    def conflict_cb(self, state, doc_id, rev=None, deleted=False, own_change=False):
         d = conflicts.solve(state.medium.get_database(), doc_id)
         d.addCallbacks(self._solve_cb, self._solve_err,
                        callbackArgs=(doc_id, ))
