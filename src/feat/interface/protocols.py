@@ -21,7 +21,7 @@
 # Headers in this file shall remain intact.
 from zope.interface import Interface, Attribute
 
-from feat.common import enum, error, defer
+from feat.common import enum, error
 
 __all__ = ["ProtocolFailed", "ProtocolNotCriticalError",
            "ProtocolExpired", "ProtocolCancelled",
@@ -49,7 +49,7 @@ class ProtocolNotCriticalError(ProtocolFailed):
     '''Not critical error that should not be logged as error.'''
 
 
-class ProtocolExpired(ProtocolNotCriticalError, defer.CancelledError):
+class ProtocolExpired(ProtocolNotCriticalError):
     '''A protocol peer has been terminated by the expiration call.'''
 
 
