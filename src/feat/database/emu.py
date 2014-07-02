@@ -214,6 +214,9 @@ class Database(common.ConnectionManager, log.LogProxy, ChangeListener,
         group = options.pop('group', False)
         group_level = options.pop('group_level', None)
         include_docs = options.pop('include_docs', False)
+        if 'keys' in options and group_level:
+            raise ValueError("CouchDB doesn't support the combination of using"
+                             " 'group_level' and passing multiple keys.")
 
         if use_reduce and include_docs:
             raise ValueError("Query parameter 'include_docs' is invalid for "
