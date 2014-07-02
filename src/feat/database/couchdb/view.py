@@ -179,6 +179,11 @@ def run(input=sys.stdin, output=sys.stdout):
     def _compile(func_str, error_id, f_name):
         globals_ = {}
 
+        if func_str in ('_count', '_sum', '_stats'):
+            # These are builtins which are not ment to be complited
+            # by the python server
+            return func_str
+
         try:
             exec func_str in {'log': _log}, globals_
         except Exception, e:
