@@ -128,10 +128,10 @@ def wait_for_ex(check, timeout, freq, args=(), kwargs={}, logger=None):
     while True:
         value = yield check(*args, **kwargs)
         if value:
-            logger.info('Check %r positive, continuing.',
+            logger.log('Check %r positive, continuing.',
                       check.__name__)
             break
-        logger.info('Check %r still negative, sleeping %r seconds.',
+        logger.log('Check %r still negative, sleeping %r seconds.',
                     check.__name__, freq)
         waiting += freq
         if waiting > timeout:
