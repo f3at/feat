@@ -1,6 +1,8 @@
 import operator
 
 from twisted.python.failure import Failure
+from twisted.internet import task as itask
+
 
 from feat.agents.application import feat
 from feat.common.text_helper import format_block
@@ -408,16 +410,23 @@ def cleanup_logs(connection, rconnection):
     cleanup_seq = min(counters.values()) if statuses else None
     own_tag = yield connection.get_database_tag()
 
-    deletes_count = 0 # this is returned as a result
+    context = dict()
+    context['deletes_count'] = 0 # this is returned as a result
+    context['connection'] = connection
 
     # this is cleanup for the update logs created locally
     keys = UpdateLogs.until_seq(own_tag, cleanup_seq)
     rows = yield connection.query_view(UpdateLogs, **keys)
-    for row in rows:
-        deletes_count += 1
+
+    @defer.inlineCallbacks
+    def clean_local(context, row):
+        connection = context['connection']
         in_conflict, raw_doc = yield _check_conflict(connection, row[1])
         if not in_conflict:
+            context['deletes_count'] += 1
             yield _cleanup_update_log(connection, row[2])
+
+    yield itask.coiterate((clean_local(context, row) for row in rows))
 
     # this is cleanup of the update logs imported from remote partinions
     # they should be cleaned up if the document is not in conflict state
@@ -427,19 +436,28 @@ def cleanup_logs(connection, rconnection):
                           key=lambda row: (row[0][1], row[0][2]),
                           # (rev, doc_id)
                           value=lambda row: (row[0][3], row[2]))
-    for (partion_tag, owner_id), entries in grouped.iteritems():
-        if partion_tag == own_tag:
+
+    @defer.inlineCallbacks
+    def clean_imported(context, partition_tag, owner_id, entries):
+        connection = context['connection']
+        if partition_tag == own_tag:
             # this is local update log, this is handeled by the code above
-            continue
+            return
+
         in_conflict, raw_doc = yield _check_conflict(connection, owner_id)
         last_rev = entries[-1][0]
         if (not in_conflict and
             (raw_doc.get('_deleted') or
              parse_rev(last_rev) <= parse_rev(raw_doc['_rev']))):
             for (rev, doc_id) in entries:
-                deletes_count += 1
+                context['deletes_count'] += 1
                 yield _cleanup_update_log(connection, doc_id)
-    defer.returnValue(deletes_count)
+
+    yield itask.coiterate((
+        clean_imported(context, partition_tag, owner_id, entries)
+        for (partition_tag, owner_id), entries in grouped.iteritems()))
+
+    defer.returnValue(context['deletes_count'])
 
 
 def parse_rev(rev):
