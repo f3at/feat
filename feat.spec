@@ -2,9 +2,9 @@
 
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
-%define version 0.29.5
-%define unmangled_version 0.29.5
-%define build_rev 2
+%define version 0.29.6
+%define unmangled_version 0.29.6
+%define build_rev 1
 
 Name:           python-feat
 Summary:        Flumotion Asynchronous Autonomous Agent Toolkit
@@ -176,6 +176,10 @@ fi
 
 
 %changelog
+* Thu Jul 10 2014 Thomas Vander Stichele <thomas at apestaart dot org>
+- 0.29.6-1
+- new release
+
 * Tue Jul 01 2014 Thomas Vander Stichele <thomas at apestaart dot org>
 - 0.29.5-2
 - bug fixes after release
