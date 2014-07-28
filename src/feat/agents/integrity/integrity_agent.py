@@ -202,7 +202,8 @@ class IntegrityAgent(agent.BaseAgent):
                 doc_id = doc.doc_id
             else:
                 doc_id = doc['_id']
-                state.unsolvable_conflicts.add(doc_id)
+
+            state.unsolvable_conflicts.add(doc_id)
             self.warning('Cannot solve conflict for document id: %s. '
                          'Reason: %s', doc_id, fail.value)
 
