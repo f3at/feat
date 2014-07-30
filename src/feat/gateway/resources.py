@@ -676,6 +676,16 @@ class StaticResource(BaseResource):
             res.close()
 
 
+class Redirect(webserver.LeafResourceMixin):
+
+    def __init__(self, location):
+        self.location = location
+
+    def render_resource(self, request, response, location):
+        response.set_status(http.Status.MOVED_PERMANENTLY)
+        response.set_header('Location', self.location)
+
+
 class Root(BaseResource):
 
     implements(IAspect)
@@ -695,6 +705,17 @@ class Root(BaseResource):
         self._methods = set([http.Methods.GET])
 
     def locate_resource(self, request, location, remaining):
+        request_host = request.get_header('host')
+        if request_host is not None:
+            if ':' in request_host:
+                request_host = request_host.split(":", 1)[0]
+            if request_host != self.hostname:
+                new_uri = "%s://%s:%s%s" % (
+                    request.scheme.name.lower(),
+                    self.hostname,
+                    self.port,
+                    http.tuple2path(location + remaining))
+                return Redirect(new_uri)
 
         if self._static and remaining[0] == u"static":
             return self._static, remaining[1:]
