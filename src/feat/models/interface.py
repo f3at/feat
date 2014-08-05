@@ -44,13 +44,13 @@ __all__ = ["ResponseTypes", "ActionCategories",
 
 class ResponseTypes(enum.Enum):
     """
-    Types of success response model that an action could return:
+    Types of response model that an action could return:
      - created: The action resulted in a new model being created successfully.
      - updates: The action resulted in the model being updated successfully.
      - deleted: The action resulted in the model being deleted successfully.
      - done: The action has been done successfully.
      """
-    created, updated, deleted, accepted, done = range(5)
+    created, updated, deleted, accepted, done, error = range(6)
 
 
 class ActionCategories(enum.Enum):
