@@ -237,6 +237,118 @@ def _validate_arguments(arguments):
     return dict((k, v[0]) for k, v in arguments.iteritems())
 
 
+class ActionResource(BaseResource):
+
+    implements(webserver.IWebResource)
+
+    # Use to validate action in function of the http method
+    # the first tuple contains the valid values for is_idempotent
+    # and the second the valid values for category.
+    action_validation = {http.Methods.GET:
+                         ((True, ), (ActionCategories.retrieve, )),
+                         http.Methods.DELETE:
+                         ((True, ), (ActionCategories.delete, )),
+                         http.Methods.PUT:
+                         ((True, ), (ActionCategories.create,
+                                     ActionCategories.update)),
+                         http.Methods.POST:
+                         ((True, False), (ActionCategories.create,
+                                          ActionCategories.update,
+                                          ActionCategories.retrieve,
+                                          ActionCategories.command))}
+
+    def __init__(self, action, context):
+        self._action = IModelAction(action)
+        self._context = context
+        self._methods = set()
+        self._update_methods(action, self._methods)
+
+    def make_context(self, request):
+        return self._context
+
+    ### webserver.IWebResource ###
+
+    def is_method_allowed(self, request, location, methode):
+        return methode in self._methods
+
+    def get_allowed_methods(self, request, location):
+        return list(self._methods)
+
+    def locate_resource(self, request, location, remaining):
+        raise NotImplementedError()
+
+    @webserver.read_object(IActionPayload, {})
+    def render_resource(self, params, request, response, location):
+
+        def got_data(data):
+            response.set_header("Cache-Control", "no-cache")
+
+            if IEncodingInfo.providedBy(self._action.result_info):
+                enc_info = IEncodingInfo(self._action.result_info)
+                mime_type = enc_info.mime_type
+                encoding = enc_info.encoding
+
+                if mime_type:
+                    request.debug("Changing mime_type to %r", mime_type)
+                    response.set_mime_type(mime_type)
+                if encoding:
+                    request.debug("Changing encoding to %r", encoding)
+                    response.set_encoding(encoding)
+
+                response.set_length(len(data))
+                return response.write(data)
+
+            #FIXME: passing query arguments without validation is not safe
+            return response.write_object(data, context=self._context,
+                                         **request.arguments)
+
+        is_idempotent, categories = self.action_validation[request.method]
+        if (self._action.is_idempotent not in is_idempotent
+            or self._action.category not in categories):
+            raise http.NotAllowedError(allowed_methods=list(self._methods))
+
+        # in case GET request to the ActionCategory.retrieve action,
+        # the action parameters are in the query string, here we parse it
+        request.debug("%r", self._action.category)
+        if (self._action.category == ActionCategories.retrieve and
+            self._action.is_idempotent and request.method == http.Methods.GET):
+            params = dict()
+            request.debug("%r", self._action.parameters)
+            request.debug("%r", request.arguments)
+            for param in self._action.parameters:
+                if param.name in request.arguments:
+                    if param.value_info.value_type == ValueTypes.collection:
+                        params[param.name] = request.arguments[param.name]
+                    else:
+                        params[param.name] = request.arguments[param.name][0]
+
+        # avoid putting lots of text into the log
+        repr_params = repr(params)
+        if len(repr_params) > 500:
+            repr_params = repr_params[:500] + ' (truncated)'
+        request.debug("Performing action %r on %s model %r with parameters %s",
+                    self._action.name, self._context.models[-1].identity,
+                    self._context.models[-1].name, repr_params)
+        d = self._action.perform(**params)
+        d.addCallback(got_data)
+        d.addErrback(self.filter_errors)
+        return d
+
+    ### private ###
+
+    def _update_methods(self, action, methods):
+        if not action.is_idempotent:
+            methods.add(http.Methods.POST)
+        elif action.category is ActionCategories.delete:
+            methods.add(http.Methods.DELETE)
+        elif action.category in (ActionCategories.create,
+                                 ActionCategories.update):
+            methods.add(http.Methods.PUT)
+            methods.add(http.Methods.POST)
+        elif action.category is ActionCategories.command:
+            methods.add(http.Methods.POST)
+
+
 class ModelResource(BaseResource):
 
     __slots__ = ("model", "_methods", "_model_history", "_name_history")
@@ -249,6 +361,8 @@ class ModelResource(BaseResource):
     method_actions = {http.Methods.DELETE: u"del",
                       http.Methods.PUT: u"set",
                       http.Methods.POST: u"post"}
+
+    ActionResource = ActionResource
 
     def __init__(self, model, name=None, models=[], names=[]):
         self.model = IModel(model)
@@ -375,7 +489,7 @@ class ModelResource(BaseResource):
                 raise http.NotFoundError()
 
             context = self.make_context(request)
-            return ActionResource(action, context)
+            return self.ActionResource(action, context)
 
         if not remaining or (remaining == (u'', )):
             if self.model.reference is not None:
@@ -472,118 +586,6 @@ class ModelResource(BaseResource):
             response.write(value)
         else:
             response.set_length(0)
-
-
-class ActionResource(BaseResource):
-
-    implements(webserver.IWebResource)
-
-    # Use to validate action in function of the http method
-    # the first tuple contains the valid values for is_idempotent
-    # and the second the valid values for category.
-    action_validation = {http.Methods.GET:
-                         ((True, ), (ActionCategories.retrieve, )),
-                         http.Methods.DELETE:
-                         ((True, ), (ActionCategories.delete, )),
-                         http.Methods.PUT:
-                         ((True, ), (ActionCategories.create,
-                                     ActionCategories.update)),
-                         http.Methods.POST:
-                         ((True, False), (ActionCategories.create,
-                                          ActionCategories.update,
-                                          ActionCategories.retrieve,
-                                          ActionCategories.command))}
-
-    def __init__(self, action, context):
-        self._action = IModelAction(action)
-        self._context = context
-        self._methods = set()
-        self._update_methods(action, self._methods)
-
-    def make_context(self, request):
-        return self._context
-
-    ### webserver.IWebResource ###
-
-    def is_method_allowed(self, request, location, methode):
-        return methode in self._methods
-
-    def get_allowed_methods(self, request, location):
-        return list(self._methods)
-
-    def locate_resource(self, request, location, remaining):
-        raise NotImplementedError()
-
-    @webserver.read_object(IActionPayload, {})
-    def render_resource(self, params, request, response, location):
-
-        def got_data(data):
-            response.set_header("Cache-Control", "no-cache")
-
-            if IEncodingInfo.providedBy(self._action.result_info):
-                enc_info = IEncodingInfo(self._action.result_info)
-                mime_type = enc_info.mime_type
-                encoding = enc_info.encoding
-
-                if mime_type:
-                    request.debug("Changing mime_type to %r", mime_type)
-                    response.set_mime_type(mime_type)
-                if encoding:
-                    request.debug("Changing encoding to %r", encoding)
-                    response.set_encoding(encoding)
-
-                response.set_length(len(data))
-                return response.write(data)
-
-            #FIXME: passing query arguments without validation is not safe
-            return response.write_object(data, context=self._context,
-                                         **request.arguments)
-
-        is_idempotent, categories = self.action_validation[request.method]
-        if (self._action.is_idempotent not in is_idempotent
-            or self._action.category not in categories):
-            raise http.NotAllowedError(allowed_methods=list(self._methods))
-
-        # in case GET request to the ActionCategory.retrieve action,
-        # the action parameters are in the query string, here we parse it
-        request.debug("%r", self._action.category)
-        if (self._action.category == ActionCategories.retrieve and
-            self._action.is_idempotent and request.method == http.Methods.GET):
-            params = dict()
-            request.debug("%r", self._action.parameters)
-            request.debug("%r", request.arguments)
-            for param in self._action.parameters:
-                if param.name in request.arguments:
-                    if param.value_info.value_type == ValueTypes.collection:
-                        params[param.name] = request.arguments[param.name]
-                    else:
-                        params[param.name] = request.arguments[param.name][0]
-
-        # avoid putting lots of text into the log
-        repr_params = repr(params)
-        if len(repr_params) > 500:
-            repr_params = repr_params[:500] + ' (truncated)'
-        request.debug("Performing action %r on %s model %r with parameters %s",
-                    self._action.name, self._context.models[-1].identity,
-                    self._context.models[-1].name, repr_params)
-        d = self._action.perform(**params)
-        d.addCallback(got_data)
-        d.addErrback(self.filter_errors)
-        return d
-
-    ### private ###
-
-    def _update_methods(self, action, methods):
-        if not action.is_idempotent:
-            methods.add(http.Methods.POST)
-        elif action.category is ActionCategories.delete:
-            methods.add(http.Methods.DELETE)
-        elif action.category in (ActionCategories.create,
-                                 ActionCategories.update):
-            methods.add(http.Methods.PUT)
-            methods.add(http.Methods.POST)
-        elif action.category is ActionCategories.command:
-            methods.add(http.Methods.POST)
 
 
 class StaticResource(BaseResource):
