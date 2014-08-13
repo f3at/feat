@@ -144,6 +144,7 @@ class Protocol(http.BaseProtocol):
     def request(self, method, location,
                 protocol=None, headers=None, body=None, decoder=None):
         self.cancel_timeout("inactivity")
+        self.reset_timeout('headers')
 
         headers = dict(headers) if headers is not None else {}
         if body:
