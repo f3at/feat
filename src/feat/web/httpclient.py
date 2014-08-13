@@ -106,9 +106,10 @@ class ResponseDecoder(object, Protocol):
 
 
 STATE_DESCRIPTIONS = {
-    0: 'waiting for the status line',
-    1: 'receiving the headers',
-    2: 'receiving the response body'}
+    http.BaseProtocol.STATE_REQLINE: 'waiting for the status line',
+    http.BaseProtocol.STATE_HEADERS: 'receiving the headers',
+    http.BaseProtocol.STATE_BODY: 'receiving the response body',
+    }
 
 
 class Protocol(http.BaseProtocol):
