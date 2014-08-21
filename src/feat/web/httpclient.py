@@ -123,6 +123,7 @@ class Protocol(http.BaseProtocol):
             if getattr(owner, "response_timeout", None) is not None:
                 self.firstline_timeout = owner.response_timeout
                 self.inactivity_timeout = owner.response_timeout
+                self.headers_timeout = owner.response_timeout
 
             if getattr(owner, "idle_timeout", None) is not None:
                 self.idle_timeout = owner.idle_timeout
