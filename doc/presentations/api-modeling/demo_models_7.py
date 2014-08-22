@@ -3,6 +3,7 @@ from feat.models import model, value, action, reference
 from feat.models import effect, call, getter, setter, response
 
 import demo_service
+register = model.get_registry().register
 
 
 @adapter.register(demo_service.Service, model.IModel)
@@ -26,6 +27,7 @@ class CreateDocument(action.Action):
         return response.Created(ref, "Document Created")
 
 
+@register
 class Documents(model.Collection):
     model.identity("service.documents")
     model.child_model("service.documents.CATEGORY")
@@ -35,6 +37,7 @@ class Documents(model.Collection):
                  label="Create Document")
 
 
+@register
 class Category(model.Collection):
     model.identity("service.documents.CATEGORY")
     model.child_model("service.documents.CATEGORY.NAME")
@@ -48,6 +51,7 @@ class Category(model.Collection):
         return self.source.get_document(self.view, name)
 
 
+@register
 class Document(model.Model):
     model.identity("service.documents.CATEGORY.NAME")
     model.attribute("category", value.String(), getter.view_getattr())
