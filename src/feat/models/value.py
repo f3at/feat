@@ -772,7 +772,8 @@ class Structure(Value):
                 if field.is_required:
                     raise
                 if field.value_info.use_default:
-                    result[field.name] = field.value_info.default
+                    result[field.name] = field.value_info.publish(
+                        field.value_info.default)
         return result
 
     ### IValueList ###
