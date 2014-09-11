@@ -22,12 +22,32 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-"""Dummy implementation of feat.common.fcntl module."""
+"""Unix-like implementation of feat.common.fcntl module."""
+
+# Helper functions arround fcntl for file locking
+from feat import hacks
+
+_fcntl = hacks.import_fcntl()
+lockf = _fcntl.lockf
+flock = _fcntl.flock
+
+# lockf can be used instead, but the lock is shared in the same process,
+# as it's taken in the file's inode for the process pid and not in the file
+# desctiptor, like flock
+LOCK_FN = flock
 
 
-def lock(fd, use_flock=False):
-    """Overridden in platform specific implementation."""
+def lock(fd):
+    try:
+        LOCK_FN(fd, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+        return True
+    except IOError:
+        return False
 
 
-def unlock(fd, use_flock=False):
-    """Overridden in platform specific implementation."""
+def unlock(fd):
+    try:
+        LOCK_FN(fd, _fcntl.LOCK_UN)
+        return True
+    except IOError:
+        return False
