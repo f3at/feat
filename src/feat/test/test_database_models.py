@@ -178,7 +178,7 @@ class TestDoingSelectsViaApi(common.TestCase, ModelTestMixin):
         js = yield self.model_as_json(res)
         self.assertIsInstance(js, dict)
         self.assertEquals(['field1'], js.keys())
-        self.assertEqual({18, 10, 12, 14, 16, 6, 4, 2, 0, 8},
+        self.assertEqual(set([18, 10, 12, 14, 16, 6, 4, 2, 0, 8]),
                          set(js['field1']))
 
     @defer.inlineCallbacks
