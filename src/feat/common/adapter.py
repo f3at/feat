@@ -19,15 +19,41 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from twisted.python import components
+from zope.interface import adapter, interface, declarations
 
 from feat.common import decorator
 
+registry = adapter.AdapterRegistry()
 
-components.ALLOW_DUPLICATES = True
+
+def _lookup_adapter_hook(iface, ob):
+    factory = registry.lookup1(declarations.providedBy(ob), iface)
+    return factory and factory(ob)
+
+interface.adapter_hooks.append(_lookup_adapter_hook)
 
 
 @decorator.parametrized_class
 def register(cls, adapted, interface):
-    components.registerAdapter(cls, adapted, interface)
+    register_adapter(registry, cls, adapted, interface)
     return cls
+
+
+def register_adapter(registry, adapter_factory, adapted, *interfaces):
+    assert interfaces, "You need to pass an Interface"
+
+    # deal with class->interface adapters:
+    if not isinstance(adapted, interface.InterfaceClass):
+        adapted_ = declarations.implementedBy(adapted)
+    else:
+        adapted_ = adapted
+
+    for iface in interfaces:
+        factory = registry.registered([adapted_], iface)
+        if factory is not None:
+            raise ValueError("an adapter (%s) was already registered."
+                             % (factory, ))
+    for iface in interfaces:
+        registry.register([adapted_], iface, '', adapter_factory)
+
+    return adapter_factory
