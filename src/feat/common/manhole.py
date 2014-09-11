@@ -28,7 +28,7 @@ from twisted.internet import defer
 from twisted.spread import pb
 
 from feat.common import (decorator, annotate, enum, log, reflect,
-                         error_handler, container, text_helper, )
+                         error, container, text_helper, )
 
 
 class SecurityLevel(enum.Enum):
@@ -444,7 +444,7 @@ class Parser(log.Logger):
         return self._locals[variable_name]
 
     def _error_handler(self, f):
-        error_handler(self, f)
+        error.handle_failure(self, f, "Error processing")
         self.send_output(f.getErrorMessage())
         self.on_finish()
 

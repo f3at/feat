@@ -468,7 +468,7 @@ class FindNeighboursContractor(contractor.BaseContractor):
 
     @replay.immutable
     def _granted_failed(self, state, failure):
-        self._error_handler(failure)
+        error.handle_failure(self, failure, 'Grant failed')
         msg = message.Cancellation(reason=str(failure.value))
         state.medium.defect(msg)
         return self._release_allocation()

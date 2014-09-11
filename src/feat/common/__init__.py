@@ -24,9 +24,6 @@
 
 import sys
 
-from feat.common import error
-
-
 if sys.platform == "win32":
     from feat.common import _win32_signal as signal
     from feat.common import _win32_run as run
@@ -39,10 +36,6 @@ else:
 sys.modules['feat.common.signal'] = signal
 sys.modules['feat.common.run'] = run
 sys.modules['feat.common.fcntl'] = fcntl
-
-
-def error_handler(logger, f):
-    error.handle_failure(logger, f, "Error processing")
 
 
 def first(iterator):
