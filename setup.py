@@ -37,7 +37,7 @@ LICENSE = "GPL"
 PLATFORMS = ['any']
 REQUIRES = ['json']
 SETUP_REQUIRES = ['setuptools>=0.6c9']
-INSTALL_REQUIRES = []
+INSTALL_REQUIRES = ['zope.interface >= 3.6.0']
 KEYWORDS = ['twisted', 'agent', 'framework']
 CLASSIFIERS = [
     'Development Status :: 4 - Beta',
