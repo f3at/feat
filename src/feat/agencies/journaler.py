@@ -32,7 +32,7 @@ from twisted.enterprise import adbapi
 from twisted.spread import pb
 from twisted.python import log as twisted_log, failure
 
-from feat.common import (log, text_helper, error_handler, defer,
+from feat.common import (log, text_helper, defer,
                          formatable, enum, decorator, time, manhole,
                          fiber, signal, error, connstr)
 from feat.agencies import common
@@ -123,8 +123,6 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
     implements(IJournaler, ILogKeeper)
 
     log_category = 'journaler'
-
-    _error_handler = error_handler
 
     def __init__(self, on_rotate_cb=None, on_switch_writer_cb=None,
                  hostname=None):
@@ -410,8 +408,6 @@ class Journaler(log.Logger, common.StateMachineMixin, manhole.Manhole):
 class BrokerProxyWriter(log.Logger, common.StateMachineMixin):
     implements(IJournalWriter)
 
-    _error_handler = error_handler
-
     def __init__(self, broker):
         '''
         @param encoding: Optional encoding to be used for blob fields.
@@ -499,8 +495,6 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
 
 
     implements(IJournalWriter, IJournalReader)
-
-    _error_handler = error_handler
 
     def __init__(self, logger, filename=":memory:", encoding=None,
                  hostname=None):
@@ -982,7 +976,8 @@ class SqliteWriter(log.Logger, log.LogProxy, common.StateMachineMixin):
         self._reset_history_id_cache()
 
         d = self._db.runWithConnection(run_all, commands)
-        d.addErrback(self._error_handler)
+        d.addErrback(lambda fail: error.handle_failure(
+            self, fail, 'Failed running commands'))
         return d
 
     def _initiated_ok(self, *_):

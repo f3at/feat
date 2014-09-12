@@ -35,9 +35,9 @@ DOWNLOAD_URL = ('https://github.com/downloads/f3at/feat/%s-%s.tar.gz'
                 % (NAME, VERSION)),
 LICENSE = "GPL"
 PLATFORMS = ['any']
-REQUIRES = ['twisted', 'twisted.web', 'json']
+REQUIRES = ['json']
 SETUP_REQUIRES = ['setuptools>=0.6c9']
-INSTALL_REQUIRES = ['Twisted>=10.1']
+INSTALL_REQUIRES = ['zope.interface >= 3.6.0']
 KEYWORDS = ['twisted', 'agent', 'framework']
 CLASSIFIERS = [
     'Development Status :: 4 - Beta',

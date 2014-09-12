@@ -1,8 +1,10 @@
 import sys
 
-from zope.interface import adapter, interface, declarations, implements
+from zope.interface import adapter as iadapter
+from zope.interface import interface, declarations, implements
 
 from feat.common import serialization, reflect, log, registry, error
+from feat.common import adapter
 from feat.models import model
 from feat.database import migration
 
@@ -73,7 +75,7 @@ class Application(log.Logger):
         self._agents = get_agent_registry()
         self._views = get_view_registry()
         self._initial_data = get_initial_data_registry()
-        self._adapters = adapter.AdapterRegistry()
+        self._adapters = iadapter.AdapterRegistry()
         self._models = model.get_registry()
         self._migrations = migration.get_registry()
 
@@ -150,23 +152,10 @@ class Application(log.Logger):
     def register_adapter(self, adapted, *interfaces):
 
         def register_adapter(adapter_factory):
-            assert interfaces, "You need to pass an Interface"
-
-            # deal with class->interface adapters:
-            if not isinstance(adapted, interface.InterfaceClass):
-                adapted_ = declarations.implementedBy(adapted)
-            else:
-                adapted_ = adapted
-
-            for iface in interfaces:
-                factory = self._adapters.registered([adapted_], iface)
-                if factory is not None:
-                    raise ValueError("an adapter (%s) was already registered."
-                                     % (factory, ))
-            for iface in interfaces:
-                self._adapters.register([adapted_], iface, '', adapter_factory)
-
-            return adapter_factory
+            return adapter.register_adapter(
+                self._adapters,
+                adapter_factory,
+                adapted, *interfaces)
 
         return register_adapter
 

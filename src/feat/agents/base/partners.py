@@ -27,7 +27,7 @@ import sys
 from zope.interface import implements
 
 from feat.common import log, serialization, fiber, defer, annotate
-from feat.common import formatable, mro, error_handler, error
+from feat.common import formatable, mro, error
 from feat.agents.base import replay, requester
 from feat.agencies import recipient
 from feat.agents.application import feat
@@ -244,8 +244,6 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
     default_role = None
 
     application = feat
-
-    _error_handler = error_handler
 
     has_many("all", "whatever", BasePartner, force=True)
 
@@ -477,6 +475,9 @@ class Partners(log.Logger, log.LogProxy, replay.Replayable):
         return f
 
     # private
+
+    def _error_handler(self, f):
+        error.handle_failure(self, f, 'Error processing')
 
     def _do_breakup(self, partner):
         return self._remove_and_trigger_cb(partner, 'on_breakup')

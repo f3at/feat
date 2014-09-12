@@ -22,28 +22,6 @@
 # -*- Mode: Python -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
-import sys
-
-from feat.common import error
-
-
-if sys.platform == "win32":
-    from feat.common import _win32_signal as signal
-    from feat.common import _win32_run as run
-    from feat.common import _win32_fcntl as fcntl
-else:
-    from feat.common import _unix_signal as signal #@Reimport
-    from feat.common import _unix_run as run #@Reimport
-    from feat.common import _unix_fcntl as fcntl #@Reimport
-
-sys.modules['feat.common.signal'] = signal
-sys.modules['feat.common.run'] = run
-sys.modules['feat.common.fcntl'] = fcntl
-
-
-def error_handler(logger, f):
-    error.handle_failure(logger, f, "Error processing")
-
 
 def first(iterator):
     '''

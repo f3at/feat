@@ -24,7 +24,7 @@ from zope.interface import implements
 
 from feat.agents.base import replay, protocols
 from feat.agencies import message, recipient
-from feat.common import reflect, serialization, fiber, error_handler
+from feat.common import reflect, serialization, fiber
 from feat.agents.application import feat
 
 from feat.interface.protocols import *
@@ -91,8 +91,6 @@ class BaseRequester(protocols.BaseInitiator):
 
     timeout = 0
 
-    _error_handler = error_handler
-
     def got_reply(self, reply):
         '''@see: L{IAgentRequester}'''
 
@@ -136,7 +134,7 @@ class PartnershipProtocol(BaseRequester):
     def got_reply(self, state, reply):
         result = reply.payload["result"]
         if isinstance(result, Failure):
-            self._error_handler(result)
+            error.handle_failure(self, result, "Error processing")
         return result
 
     @replay.journaled
