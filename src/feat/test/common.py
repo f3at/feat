@@ -51,7 +51,6 @@ except AttributeError:
     _getConfig = dict
 
 log.init('test.log')
-feat.load()
 
 
 def delay(value, delay):

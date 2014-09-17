@@ -35,7 +35,8 @@ from twisted.trial.unittest import SkipTest
 
 from feat.common import serialization, enum
 from feat.common.serialization import base, adapters
-from feat.interface.serialization import *
+from feat.interface.serialization import Capabilities, ISnapshotable
+from feat.interface.serialization import ISerializable
 
 from . import common
 
