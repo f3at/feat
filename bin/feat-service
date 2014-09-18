@@ -373,15 +373,17 @@ def upgrade(connection):
 
 @defer.inlineCallbacks
 def update_views(connection):
-    from feat.database import view
+    from feat.database import view, tools
     from feat.database.interface import ConflictError
 
     design_docs = view.generate_design_docs()
     to_update = list()
+    new = list()
     for design_doc in design_docs:
         try:
-            yield connection.save_document(design_doc)
+            design_doc = yield connection.save_document(design_doc)
             logger.info("Pushed new design document: %s", design_doc.doc_id)
+            new.append(design_doc)
             continue
         except ConflictError:
             fetched = yield connection.get_document(design_doc.doc_id)
@@ -391,8 +393,12 @@ def update_views(connection):
             else:
                 to_update.append((design_doc, fetched))
 
-    results = yield defer.DeferredList([update_design_doc(connection, doc)
-                                        for doc, _orig in to_update])
+    results = yield defer.DeferredList(
+        [update_design_doc(connection, doc)
+         for doc, _orig in to_update] +
+        [tools.rebuild_view_index(connection, doc)
+         for doc in new])
+
     for success, result in results:
         if not success:
             defer.returnValue(result)
