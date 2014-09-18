@@ -63,7 +63,7 @@ class IntegrationTest(common.TestCase):
     def setUp(self):
         self.assert_not_skipped()
         feat.load_adapters()
-        self.add_cleanup(feat.unload_adapters)
+        self.addCleanup(feat.unload_adapters)
 
         return common.TestCase.setUp(self)
 
