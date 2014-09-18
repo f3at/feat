@@ -130,10 +130,6 @@ class JSSummingView(view.JavascriptView):
         }
     }''')
 
-    @classmethod
-    def perform_map(cls, doc):
-        return SummingView.map(doc)
-
     reduce = format_block('''
     function(keys, values) {
         var value = 0;
@@ -143,9 +139,6 @@ class JSSummingView(view.JavascriptView):
         return value;
     }''')
 
-    @classmethod
-    def perform_reduce(cls, keys, values):
-        return SummingView.reduce(keys, values)
 
 
 class CountingView(view.BaseView):

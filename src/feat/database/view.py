@@ -47,6 +47,26 @@ class JavascriptView(annotate.Annotable):
     design_doc_id = None
     language = u'javascript'
 
+    map_wrapper = format_block("""
+    function exec(doc) {
+        result = new Array();
+
+        function emit(key, value) {result.push([key, value]); }
+
+        (%s)(doc);
+        return result;
+    }
+    """)
+
+    js_wrapper = format_block("""
+    function exec() {
+        return (%s).apply(null, arguments);
+    }
+    """)
+
+    # (wrapper, method) -> execjs.Context()
+    compiled = dict()
+
     @classmethod
     def __class__init__(cls, name, bases, dct):
         directlyProvides(cls, IViewFactory)
@@ -62,28 +82,42 @@ class JavascriptView(annotate.Annotable):
 
     @classmethod
     def perform_map(cls, doc):
-        cls._not_supported('perform_map')
+        context = cls.get_execjs(cls.map_wrapper, cls.map)
+        for key, value in context.call('exec', doc):
+            if isinstance(key, list):
+                key = tuple(key)
+            yield key, value
 
     @classmethod
     def perform_reduce(cls, keys, values):
-        cls._not_supported('perform_reduce')
+        context = cls.get_execjs(cls.js_wrapper, cls.reduce)
+        return context.call('exec', keys, values)
 
     @classmethod
     def perform_filter(cls, doc, request):
-        cls._not_supported('perform_filter')
+        context = cls.get_execjs(cls.js_wrapper, cls.filter)
+        return context.call('exec', doc, request)
 
     @classmethod
     def get_code(cls, name):
         return unicode(getattr(cls, name))
 
-    ### private ###
+    ### protected ###
 
     @classmethod
-    def _not_supported(cls, what):
-        raise NotImplementedError("Class %r doesn't support emu database "
-                                  "evaluating the %s callback. If you need "
-                                  "to use it, you should overload it." %
-                                  (cls, what))
+    def get_execjs(cls, wrapper, method):
+        key = (wrapper, method)
+        if key not in cls.compiled:
+            try:
+                import execjs
+            except ImportError:
+                raise NotImplementedError(
+                    "Using js views in with emu database requires "
+                    "installing the execjs python module. ")
+
+            cls.compiled[key] = execjs.compile(wrapper % (method, ))
+
+        return cls.compiled[key]
 
 
 class AdhocQuery(object):
@@ -302,11 +336,6 @@ class DocumentByType(JavascriptView):
     }''')
 
     reduce = "_count"
-
-    @staticmethod
-    def perform_map(doc):
-        if '.type' in doc:
-            yield (doc['.type'], doc.get('.version')), None
 
     @staticmethod
     def keys(type_name):

@@ -38,21 +38,6 @@ class Join(view.JavascriptView):
     }''')
 
     @staticmethod
-    def perform_map(doc):
-        if 'linked' in doc:
-            doc_id = doc['_id']
-            for row in doc['linked']:
-                if row[3]:
-                    for role in row[3]:
-                        yield (doc_id, role), {'_id': row[1]}
-                yield (doc_id, row[0]), {'_id': row[1]}
-
-                if row[2]:
-                    for role in row[2]:
-                        yield (row[1], role), None
-                yield (row[1], doc['.type']), None
-
-    @staticmethod
     def keys(doc_id, type_name=None):
         if IDocument.providedBy(doc_id):
             doc_id = doc_id.doc_id
