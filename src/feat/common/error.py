@@ -25,8 +25,6 @@ import traceback
 import types
 import sys
 
-from twisted.python.failure import Failure
-
 from feat.common import log, decorator, reflect
 from feat.extern.log import log as xlog
 
@@ -95,15 +93,20 @@ class FeatError(Exception):
         self.cause_details = None
         self.cause_traceback = None
 
+        try:
+            from twisted.python.failure import Failure
+        except ImportError:
+            Failure = None
+
         if self.cause:
             if isinstance(self.cause, Exception):
                 self.cause_details = get_exception_message(self.cause)
-            elif isinstance(self.cause, Failure):
+            elif Failure and isinstance(self.cause, Failure):
                 self.cause_details = get_failure_message(self.cause)
             else:
                 self.cause_details = "Unknown"
 
-            if isinstance(self.cause, Failure):
+            if Failure and isinstance(self.cause, Failure):
                 f = self.cause
                 self.cause = f.value
                 try:
@@ -111,7 +114,7 @@ class FeatError(Exception):
                 except:
                     # Ignore failure.NoCurrentExceptionError
                     pass
-            else:
+            elif Failure:
                 try:
                     f = Failure()
                     if f.value == self.cause:
