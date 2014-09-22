@@ -29,10 +29,10 @@ VERSION = '0.29.9'
 DESCRIPTION = 'Flumotion Asynchronous Autonomous Agent Toolkit'
 LONG_DESC = DESCRIPTION
 AUTHOR = 'Flumotion Developers',
-AUTHOR_EMAIL = 'coreteam@flumotion.com',
-URL = 'https://github.com/f3at/feat',
+AUTHOR_EMAIL = 'coreteam@flumotion.com'
+URL = 'https://github.com/f3at/feat'
 DOWNLOAD_URL = ('https://github.com/downloads/f3at/feat/%s-%s.tar.gz'
-                % (NAME, VERSION)),
+                % (NAME, VERSION))
 LICENSE = "GPL"
 PLATFORMS = ['any']
 REQUIRES = ['json']
