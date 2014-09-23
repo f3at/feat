@@ -39,8 +39,10 @@ class Field(object):
 
     keeps_value = False
 
-    def __init__(self, field, view, id_key='_id', **kwargs):
+    def __init__(self, field, view, id_key='_id', index_field=None,
+                 **kwargs):
         self.field = field
+        self.index_field = index_field or field
         self.view = view
         self.keeps_value = kwargs.pop('keeps_value', type(self).keeps_value)
         self.id_key = id_key
@@ -68,7 +70,7 @@ class Field(object):
     ### protected ###
 
     def generate_keys(self, evaluator, value):
-        return generate_keys(self.transform, self.field, evaluator, value)
+        return generate_keys(self.transform, self.index_field, evaluator, value)
 
     def parse_view_result(self, rows, tag):
         # If the row emitted the link with _id=doc_id this value is used,
