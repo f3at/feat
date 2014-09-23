@@ -373,13 +373,22 @@ def upgrade(connection):
 
 @defer.inlineCallbacks
 def update_views(connection):
-    from feat.database import view, tools
+    from feat.database import view, tools, driver
     from feat.database.interface import ConflictError
 
     design_docs = view.generate_design_docs()
     to_update = list()
     new = list()
     for design_doc in design_docs:
+        if design_doc.disable_reduce_limit:
+            db = connection.database
+            if isinstance(db, driver.Database):
+                import json
+                yield db.couchdb_call(
+                    db.couchdb.put,
+                    '/_config/query_server_config/reduce_limit',
+                    '"false"')
+
         try:
             design_doc = yield connection.save_document(design_doc)
             logger.info("Pushed new design document: %s", design_doc.doc_id)

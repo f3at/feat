@@ -475,6 +475,8 @@ class IViewFactory(Interface):
     design_doc_id = Attribute('C{unicode}. The id of the design_doc to put'
                               ' this view in.')
     language = Attribute('C{unicode}. Language the of the view methods.')
+    disable_reduce_limit = Attribute('C{bool}. Should CouchDB be configured to '
+                                     'not use the reduce_limit')
 
     def perform_map(doc):
         '''

@@ -46,6 +46,7 @@ class JavascriptView(annotate.Annotable):
     use_reduce = False
     design_doc_id = None
     language = u'javascript'
+    disable_reduce_limit = False
 
     map_wrapper = format_block("""
     function exec(doc) {
@@ -145,6 +146,7 @@ class BaseView(annotate.Annotable):
     use_reduce = False
     design_doc_id = u'feat'
     language = u'python'
+    disable_reduce_limit = False
 
     @classmethod
     def __class__init__(cls, name, bases, dct):
@@ -361,6 +363,8 @@ class DesignDocument(document.Document):
     document.field('views', dict())
     document.field('filters', dict())
 
+    disable_reduce_limit = False
+
     @classmethod
     def generate_from_views(cls, views):
 
@@ -398,6 +402,10 @@ class DesignDocument(document.Document):
 
             if hasattr(view, 'filter'):
                 instance.filters[view.name] = view.get_code('filter')
+
+            if view.disable_reduce_limit:
+                instance.disable_reduce_limit = True
+
         return instances.values()
 
 
