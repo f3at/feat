@@ -2,8 +2,8 @@
 
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
-%define version 0.29.9
-%define unmangled_version 0.29.9
+%define version 1.0.0
+%define unmangled_version 1.0.0
 %define build_rev 1
 
 Name:           python-feat
@@ -175,6 +175,10 @@ fi
 %attr(775,root,feat) %{_localstatedir}/run/feat
 
 %changelog
+* Mon Sep 29 2014 Thomas Vander Stichele <thomas at apestaart dot org>
+- 1.0.0-1
+- time to flip the big major number
+
 * Thu Aug 21 2014 Thomas Vander Stichele <thomas at apestaart dot org>
 - 0.29.8-2
 - bugfix release for timeouts
