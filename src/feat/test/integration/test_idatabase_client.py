@@ -1,3 +1,6 @@
+# -*- Mode: Python -*-
+# vi:si:et:sw=4:sts=4:ts=4
+
 # F3AT - Flumotion Asynchronous Autonomous Agent Toolkit
 # Copyright (C) 2010,2011 Flumotion Services, S.A.
 # All rights reserved.
@@ -19,8 +22,7 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-# -*- Mode: Python -*-
-# vi:si:et:sw=4:sts=4:ts=4
+
 import copy
 import operator
 import os
@@ -138,7 +140,6 @@ class JSSummingView(view.JavascriptView):
         }
         return value;
     }''')
-
 
 
 class CountingView(view.BaseView):

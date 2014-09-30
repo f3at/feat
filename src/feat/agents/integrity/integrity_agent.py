@@ -168,12 +168,14 @@ class IntegrityAgent(agent.BaseAgent):
     def handle_conflicts(self, ids):
         self.info("Detected %d conflicts", len(ids))
         if ids:
-            return itask.coiterate((self.conflict_cb(doc_id) for doc_id in ids))
+            return itask.coiterate(
+                (self.conflict_cb(doc_id) for doc_id in ids))
         else:
             self.resolve_alert(ALERT_NAME, 'ok')
 
     @replay.immutable
-    def conflict_cb(self, state, doc_id, rev=None, deleted=False, own_change=False):
+    def conflict_cb(self, state, doc_id, rev=None, deleted=False,
+            own_change=False):
         d = conflicts.solve(state.medium.get_database(), doc_id)
         d.addCallbacks(self._solve_cb, self._solve_err,
                        callbackArgs=(doc_id, ))
