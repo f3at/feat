@@ -2,8 +2,8 @@
 
 %{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 %{!?pyver: %define pyver %(%{__python} -c "import sys ; print sys.version[:3]")}
-%define version 0.29.9
-%define unmangled_version 0.29.9
+%define version 0.29.10
+%define unmangled_version 0.29.10
 %define build_rev 1
 
 Name:           python-feat
@@ -367,4 +367,3 @@ fi
 * Thu Mar 3 2010 Josep Joan Ribas <jribas@flumotion.com>
 - 0.1.1-1
 - Initial version for RHEL6.
-
