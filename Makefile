@@ -92,3 +92,7 @@ rpm:    el6
 
 el6:    targz
 	mach -k -r c6l64 build feat.spec
+
+
+upload-pip:
+       puthon setup.py sdist upload
