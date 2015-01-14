@@ -19,14 +19,22 @@
 # See "LICENSE.GPL" in the source distribution for more information.
 
 # Headers in this file shall remain intact.
-from twisted.python.failure import Failure
-from twisted.names import dns
 from zope.interface import implements, classProvides
 
 from feat.common import serialization, adapter, error
 from feat.common.serialization import base
 
 from feat.interface.serialization import IRestorator, ISerializable
+
+try:
+    from twisted.python.failure import Failure
+except ImportError:
+    Failure = None
+
+try:
+    from twisted.names import dns
+except ImportError:
+    dns = None
 
 
 class AdaptedMarker(object):
@@ -133,55 +141,59 @@ class FeatErrorAdapter(ExceptionAdapter):
                 "Traceback information was cleanup up by FeatErrorAdapter")
 
 
-@adapter.register(Failure, ISerializable)
-@serialization.register
-class FailureAdapter(Failure, BaseAdapter, base.Serializable):
+if Failure:
 
-    type_name = "failure"
+    @adapter.register(Failure, ISerializable)
+    @serialization.register
+    class FailureAdapter(Failure, BaseAdapter, base.Serializable):
 
-    def __init__(self, failure):
-        self.__dict__.update(failure.__dict__)
-        self.cleanFailure()
+        type_name = "failure"
 
-    def snapshot(self):
-        snapshot = base.Serializable.snapshot(self)
-        snapshot['tb'] = None
-        snapshot['frames'] = []
-        snapshot['stack'] = []
-        return snapshot
+        def __init__(self, failure):
+            self.__dict__.update(failure.__dict__)
+            self.cleanFailure()
 
-    def trap(self, *errorTypes):
-        error = self.check(*errorTypes)
-        if not error:
-            self.raiseException()
-        return error
+        def snapshot(self):
+            snapshot = base.Serializable.snapshot(self)
+            snapshot['tb'] = None
+            snapshot['frames'] = []
+            snapshot['stack'] = []
+            return snapshot
 
-    def __eq__(self, other):
-        if not isinstance(other, Failure):
-            return NotImplemented
-        return (self.value == other.value
-                and self.type == self.type)
+        def trap(self, *errorTypes):
+            error = self.check(*errorTypes)
+            if not error:
+                self.raiseException()
+            return error
 
-    def __ne__(self, other):
-        eq = self.__eq__(other)
-        return not eq if eq is not NotImplemented else eq
+        def __eq__(self, other):
+            if not isinstance(other, Failure):
+                return NotImplemented
+            return (self.value == other.value
+                    and self.type == self.type)
+
+        def __ne__(self, other):
+            eq = self.__eq__(other)
+            return not eq if eq is not NotImplemented else eq
 
 
-@adapter.register(dns.Message, ISerializable)
-@serialization.register
-class MessageAdapter(BaseAdapter, base.Serializable):
+if dns:
 
-    classProvides(IRestorator)
-    implements(ISerializable)
+    @adapter.register(dns.Message, ISerializable)
+    @serialization.register
+    class MessageAdapter(BaseAdapter, base.Serializable):
 
-    def __init__(self, msg):
-        self._msg = msg
+        classProvides(IRestorator)
+        implements(ISerializable)
 
-    def snapshot(self):
-        return self._msg.toStr()
+        def __init__(self, msg):
+            self._msg = msg
 
-    @classmethod
-    def restore(cls, snapshot):
-        result = dns.Message()
-        result.fromStr(snapshot)
-        return result
+        def snapshot(self):
+            return self._msg.toStr()
+
+        @classmethod
+        def restore(cls, snapshot):
+            result = dns.Message()
+            result.fromStr(snapshot)
+            return result
