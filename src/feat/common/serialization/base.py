@@ -688,13 +688,11 @@ class Serializer(object):
 
         snapshot = value.snapshot()
 
-        if self._source_ver is not None:
-            #TODO: If external adapter is needed change this to a cast
-            if IVersionAdapter.providedBy(value):
-                adapter = IVersionAdapter(value)
-                snapshot = adapter.adapt_version(snapshot,
-                                                 self._source_ver,
-                                                 self._target_ver)
+        if IVersionAdapter.providedBy(value):
+            source = self.get_source_ver(value, snapshot)
+            target = self.get_target_ver(value, snapshot)
+            if target is not None and target != source:
+                snapshot = value.adapt_version(snapshot, source, target)
 
         dump = self.flatten_value(snapshot, caps, freezing)
 
@@ -810,6 +808,12 @@ class Serializer(object):
             return self._references[ident]
         # Otherwise return the value itself
         return container
+
+    def get_target_ver(self, instance, snapshot):
+        return self._target_ver
+
+    def get_source_ver(self, instance, snapshot):
+        return self._source_ver
 
 
 class DelayPacking(Exception):
@@ -1179,13 +1183,22 @@ class Unserializer(object):
         return instance
 
     def _adapt_snapshot(self, restorator, snapshot):
-        if self._source_ver is not None:
-            #TODO: If external adapter is needed change this to a cast
-            if IVersionAdapter.providedBy(restorator):
-                adapter = IVersionAdapter(restorator)
-                snapshot = adapter.adapt_version(
-                    snapshot, self._source_ver, self._target_ver)
+        try:
+            adapter = IVersionAdapter(restorator)
+        except TypeError:
+            pass
+        else:
+            target = self.get_target_ver(restorator, snapshot)
+            source = self.get_source_ver(restorator, snapshot)
+            if target is not None and target != source:
+                snapshot = adapter.adapt_version(snapshot, source, target)
         return snapshot
+
+    def get_target_ver(self, restorator, snapshot):
+        return self._target_ver
+
+    def get_source_ver(self, restorator, snapshot):
+        return self._source_ver
 
 
 ### private ###
