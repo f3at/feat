@@ -95,4 +95,4 @@ el6:    targz
 
 
 upload-pip:
-       puthon setup.py sdist upload
+	python setup.py sdist upload
