@@ -181,6 +181,11 @@ class VersionAdapter(object):
 
         return snapshot
 
+    @classmethod
+    def store_version(cls, snapshot, version):
+        snapshot['.version'] = version
+        return snapshot
+
 
 class MetaSerializable(MetaSnapshotable):
 
@@ -691,8 +696,10 @@ class Serializer(object):
         if IVersionAdapter.providedBy(value):
             source = self.get_source_ver(value, snapshot)
             target = self.get_target_ver(value, snapshot)
-            if target is not None and target != source:
-                snapshot = value.adapt_version(snapshot, source, target)
+            if target is not None:
+                if target != source:
+                    snapshot = value.adapt_version(snapshot, source, target)
+                value.store_version(snapshot, target)
 
         dump = self.flatten_value(snapshot, caps, freezing)
 

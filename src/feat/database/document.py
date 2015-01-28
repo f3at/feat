@@ -306,6 +306,10 @@ class MetaVersionedDocument(type(Document)):
                     return migrations
         raise NotMigratable((cls.type_name, source, target))
 
+    def store_version(self, snapshot, version):
+        snapshot[str(VERSION_ATOM)] = version
+        return snapshot
+
 
 class VersionedDocument(Document):
 
@@ -317,8 +321,8 @@ class VersionedDocument(Document):
 
     def snapshot(self):
         snapshot = Document.snapshot(self)
-        snapshot[str(VERSION_ATOM)] = type(self).version
-        return snapshot
+        cls = type(self)
+        return cls.store_version(snapshot, cls.version)
 
     ### IVersionedDocument ###
 
@@ -437,5 +441,8 @@ class VersionedFormatable(formatable.Formatable, serialization.VersionAdapter):
 
     def snapshot(self):
         snapshot = formatable.Formatable.snapshot(self)
-        snapshot[str(VERSION_ATOM)] = type(self).version
+        return self.store_version(snapshot, self.version)
+
+    def store_version(self, snapshot, version):
+        snapshot[str(VERSION_ATOM)] = version
         return snapshot
