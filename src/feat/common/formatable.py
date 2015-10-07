@@ -121,7 +121,7 @@ class Formatable(serialization.Serializable, annotate.Annotable):
         res = dict()
         for field in self._fields:
             value = getattr(self, field.name)
-            if value is not None:
+            if field.default is not None or value is not None:
                 res[field.serialize_as] = value
         return res
 

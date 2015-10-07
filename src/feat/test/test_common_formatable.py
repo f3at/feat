@@ -93,6 +93,14 @@ class TestFormatable(common.TestCase):
         self.assertIn('field1', snapshot)
         self.assertEqual(2, snapshot['field1'])
 
+    def testDefaultValueOverridenWithNone(self):
+        base = Base(field2=None)
+        snapshot = base.snapshot()
+        self.assertIsInstance(snapshot, dict)
+        self.assertIn('custom_serializable', snapshot)
+        self.assertEqual(None, snapshot['custom_serializable'])
+        self.assertNotIn('field1', snapshot)
+
     def testRecover(self):
         snapshot = dict(field1=5, custom_serializable=4, field3=1)
         instance = Child.__new__(Child)
@@ -100,6 +108,13 @@ class TestFormatable(common.TestCase):
         self.assertEqual(5, instance.field1)
         self.assertEqual(4, instance.field2)
         self.assertEqual(1, instance.field3)
+
+    def testRecoverNoneValueOverridenWithNone(self):
+        snapshot = dict(field1=5, custom_serializable=None)
+        instance = Base.__new__(Base)
+        instance.recover(snapshot)
+        self.assertEqual(5, instance.field1)
+        self.assertEqual(None, instance.field2)
 
     def testNoneValues(self):
         base = Base(field1=0, field2=[])
