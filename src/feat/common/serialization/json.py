@@ -226,7 +226,7 @@ class Unserializer(base.Unserializer):
                 # Empty list
                 return default
             key = data[0]
-            if isinstance(key, unicode):
+            if isinstance(key, basestring):
                 return self._list_unpackers.get(key, default)
             # Just a list
             return default
